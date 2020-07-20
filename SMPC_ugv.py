@@ -9,13 +9,11 @@ Copyright by RoMeLa (Robotics and Mechanisms Laboratory, University of Californi
 from casadi import *
 import numpy as np
 
-
-
 class SMPC_UGV_Planner():
 
     def __init__(self, dT, mpc_horizon, robot_size, max_nObstacles, field_of_view, lb_state, ub_state,
                  lb_control, ub_control, Q, R, angle_noise_r1, angle_noise_r2,  measurement_noise_cov_r1,
-                 measurement_noise_cov_r2):
+                 measurement_noise_cov_r2, maxComm_distance):
 
         # dt = discretized time difference
         self.dT = dT
@@ -35,43 +33,37 @@ class SMPC_UGV_Planner():
         self.ub_state = ub_state
         self.lb_control = lb_control
         self.ub_control = ub_control
-
         # Q and R diagonal matrices, used for the MPC objective function, Q is 3x3, R is 4x4 (first 2 diagonals
         # represent the cost on linear and angular velocity, the next 2 diagonals represent cost on state slack,
         # and terminal slack respectively
         self.Q = Q
         self.R = R
-
         # initialize discretized state matrices A and B (note, A is constant, but B will change as it is a function of
         # state theta)
         self.A = np.array([[1, 0, 0], [0, 1, 0], [0, 0, 1]])
         self.B = np.array([[0, 0], [0, 0], [0, 0]])
-
         # initialize measurement noise (in our calculation, measurement noise is set by the user and is gaussian,
         # zero-mean). It largely represents the noise due to communication transmitters, or other sensor devices. It
         # is assumed to be a 3x3 matrix (x, y, and theta) for both robots
         self.measurement_noise_cov_r1 = measurement_noise_cov_r1
         self.measurement_noise_cov_r2 = measurement_noise_cov_r2
-
         # we assume that there is constant noise in angle (while x and y are dynamically updated) - should be a variance
         # value
         self.angle_noise_r1 = angle_noise_r1
         self.angle_noise_r2 = angle_noise_r2
-
+        # initialize the maximum distance that robot 1 and 2 are allowed to have for cross communication
+        self.maxComm_distance = maxComm_distance
         # to produce our state and covariance updates due to cooperative localization, we need the future states,
         # system noise and measurement noise from the second robot
         #TODO: Still need to incorporate future states and system noise covariance from robot 2
-
         #self.robot2_futureStates = np.zeros((3, self.N + 1))
         #self.robot2_futureSystemNoise_cov = np.zeros((self.N + 1, 3, 3))
         #self.robot2_futureMeasurementNoise_cov = np.zeros((self.N + 1, 3, 3))
 
         # initialize cross diagonal system noise covariance matrix
         self.P12 = np.array([[0,0,0], [0,0,0], [0,0,0]])
-
         # bool variable to indicate whether the robot has made first contact with the uav
         self.first_contact = False
-
         # initialize state, control, and slack variables
         self.initVariables()
         # initialize objective function
@@ -104,6 +96,7 @@ class SMPC_UGV_Planner():
         # initialize the parameter variables, where the first 6 entries constitute the current and goal states
         # while the next N * 4 entries constitutes the current and future covariances matrices (representing the
         # system noise predicted by the RNN) which are flattened into a 1 x 4 array.
+        #TODO P array most likely may need system noise parameters for robot 1, and 2, and robot 2 states
         self.P = SX.sym('P', self.nStates * 2 + self.N * 4)
 
     # the nominal next state is calculated for use as a terminal constraint in the objective function
@@ -137,7 +130,7 @@ class SMPC_UGV_Planner():
         # the output will be the updated state and also the updated system noise covariance matrix
 
         # check if this is the first time both robots are making contact, and if they are within distance
-        if self.first_contact and np.linalg.norm(x_r1[0:2] - x_r2[0:2]):
+        if self.first_contact and np.linalg.norm(x_r1[0:2] - x_r2[0:2]) < self.maxComm_distance:
 
             # calculate the measured state before update for both robots
             x_hat_r1 = x_r1 + numpy.random.multivariate_normal(0, self.measurement_noise_cov_r1, check_valid='warn')
@@ -190,7 +183,7 @@ class SMPC_UGV_Planner():
             return x_hat_r1, P11
 
         # the second update and beyond, the following equations are used if both robots are within contact
-        elif (not self.first_contact) and np.linalg.norm(x_r1[0:2] - x_r2[0:2]):
+        elif (not self.first_contact) and np.linalg.norm(x_r1[0:2] - x_r2[0:2]) < self.maxComm_distance:
 
             # calculate the measured state before update for both robots
             x_hat_r1 = x_r1 + numpy.random.multivariate_normal(0, self.measurement_noise_cov_r1, check_valid='warn')
@@ -233,10 +226,11 @@ class SMPC_UGV_Planner():
 
 
             # calculate the updated system noise covariance for the ugv
-            P11 = P11_before_upd - mtimes(mtimes((P11_before_upd - self.P12), S_inv), P11_before_upd - self.P12)
+            P11 = P11_before_upd - mtimes(mtimes((P11_before_upd - self.P12), S_inv), (P11_before_upd - self.P12))
 
             # update the cross-diagonal matrix
-            self.P12 = self.P12 - mtimes(mtimes((P11_before_upd - self.P12), S_inv), (self.P11 - P22_before_upd))
+            # TODO double check the bottom and top equations, could be incorrect
+            self.P12 = self.P12 - mtimes(mtimes((P11_before_upd - self.P12), S_inv), (self.P12 - P22_before_upd))
 
             return x_hat_r1, P11
 
