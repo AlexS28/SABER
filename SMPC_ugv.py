@@ -11,11 +11,12 @@ import numpy as np
 from mpl_toolkits import mplot3d
 import matplotlib.pyplot as plt
 import math as m
+import control
 
 class SMPC_UGV_Planner():
 
     def __init__(self, dT, mpc_horizon, curr_pos, goal_pos, robot_size, max_nObstacles, field_of_view, lb_state,
-                 ub_state, lb_control, ub_control, Q, R, P, G, angle_noise_r1, angle_noise_r2,
+                 ub_state, lb_control, ub_control, Q, R, angle_noise_r1, angle_noise_r2,
                  relative_measurement_noise_cov, maxComm_distance, animate):
 
         # initialize Optistack class
@@ -44,12 +45,13 @@ class SMPC_UGV_Planner():
         # and terminal slack respectively. The P diagonal matrix represents the cost on the terminal constraint.
         self.Q = Q
         self.R = R
-        self.P = P
-        self.G = G
         # initialize discretized state matrices A and B (note, A is constant, but B will change as it is a function of
         # state theta)
         self.A = np.array([[1, 0, 0], [0, 1, 0], [0, 0, 1]])
-        self.B = self.opti.variable(3, 1)
+        self.B = np.array([[self.dT, 0, 0], [0, self.dT, 0], [0, 0, self.dT]])
+        # initialize the P matrix, which is the cost matrix that defines the optimal state feedback controller
+        _, self.P, _ = control.lqr(self.A, self.B, self.Q, self.R)
+
         # initialize measurement noise (in our calculation, measurement noise is set by the user and is gaussian,
         # zero-mean). It largely represents the noise due to communication transmitters, or other sensor devices. It
         # is assumed to be a 3x3 matrix (x, y, and theta) for both robots
@@ -97,12 +99,13 @@ class SMPC_UGV_Planner():
 
 
         # initialize, linear and angular velocity control variables (v, and w), and repeat above procedure
-        self.U = self.opti.variable(2, self.N)
-        self.v = self.U[0,:]
-        #self.vy = self.U[1, :]
-        self.w = self.U[1,:]
+        self.U = self.opti.variable(3, self.N)
+        self.vx = self.U[0,:]
+        self.vy = self.U[1, :]
+        self.w = self.U[2,:]
         self.opti.set_initial(self.U, 0)
 
+        # TODO: Incorporate the slack variables
         # initialize slack variables for states for prediction horizon N
         self.S1 = self.opti.variable(2, self.N)
         # initialize slack variable for the terminal state, N+1
@@ -134,9 +137,6 @@ class SMPC_UGV_Planner():
         self.r2_pos_cov = self.opti.parameter(4, self.N)
         self.opti.set_value(self.r2_pos_cov, 0)
 
-        self.B = self.opti.variable(3, 1)
-
-
     # objective function, with consideration of a final terminal state
     def obj(self):
         self.objFunc = 0
@@ -152,16 +152,18 @@ class SMPC_UGV_Planner():
 
         # add the terminal state to the objective function
         st = self.X[:, self.N]
-        con = self.U[:, self.N-1]
-        self.objFunc = self.objFunc + mtimes(mtimes((st - ref_st).T, self.P), st - ref_st) + mtimes(
-            mtimes(con.T, self.G), con)
-
+        self.objFunc = self.objFunc + mtimes(mtimes((st - ref_st).T, self.P), st - ref_st)
         # initialize the constraints for the objective function
         self.init_constraints()
 
         # initialize the objective function into the solver
         self.opti.minimize(self.objFunc)
 
+        # create a warm-start for the mpc, and initiate the solver
+        self.pre_solve()
+
+    def pre_solve(self):
+        # create a warm-start for the mpc, and initiate the solver
         # options for solver
         opts = {'ipopt': {'print_level': False, 'acceptable_tol': 10**-5,
                           'acceptable_obj_change_tol': 10**-5}}
@@ -181,10 +183,7 @@ class SMPC_UGV_Planner():
 
     # the nominal next state is calculated for use as a terminal constraint in the objective function
     def next_state_nominal(self, x, u):
-        self.B[0] = self.dT * u[0] * cos(x[2])
-        self.B[1] = self.dT * u[0] * sin(x[2])
-        self.B[2] = self.dT * u[1]
-        next_state = mtimes(self.A, x) + self.B
+        next_state = mtimes(self.A, x) + mtimes(self.B, u)
         return next_state
 
     # the next state is calculated with consideration of system noise, also considered the true state
@@ -204,13 +203,7 @@ class SMPC_UGV_Planner():
         system_noise_th = np.random.normal(0, self.opti.value(self.angle_noise))
         system_noise = np.append(system_noise_xy, system_noise_th)
 
-
-        self.B[0] = self.dT*u[0]*cos(x[2])
-        self.B[1] = self.dT*u[0]*sin(x[2])
-        self.B[2] = self.dT*u[1]
-
-
-        next_state = mtimes(self.A, x) + self.B + system_noise
+        next_state = mtimes(self.A, x) + mtimes(self.B, u) + system_noise
         return next_state
 
     # initialize all required constraints for the objective function
@@ -228,8 +221,10 @@ class SMPC_UGV_Planner():
 
              next_state = if_else((sqrt((self.X[0, k] - self.r2_traj[0, k])**2 +
                                       (self.X[1, k] - self.r2_traj[1, k]**2)) >= self.maxComm_distance),
-                                 self.update_1(self.X[:,k], self.U[:,k], k), if_else((sqrt((self.X[0, k] - self.r2_traj[0, k])**2 +
-                                      (self.X[1, k] - self.r2_traj[1, k]**2)) < self.maxComm_distance), self.update_2(self.X[:,k], self.U[:,k], k), 0))
+                                 self.update_1(self.X[:,k], self.U[:,k], k), if_else((sqrt((self.X[0, k] -
+                                                                                            self.r2_traj[0, k])**2 +
+                                      (self.X[1, k] - self.r2_traj[1, k]**2)) < self.maxComm_distance),
+                                                                     self.update_2(self.X[:,k], self.U[:,k], k), 0))
 
              self.opti.subject_to(self.X[:,k+1] == next_state)
 
@@ -237,19 +232,107 @@ class SMPC_UGV_Planner():
         next_state = self.next_state_nominal(self.X[:, self.N-1], self.U[:, self.N-1])
         self.opti.subject_to(self.X[:, self.N] == next_state)
 
+        # provide rotational constraints
+        gRotx = []
+        gRoty = []
+
+        for k in range(0, self.N):
+            rhsx = (cos(self.X[2, k]) * (self.U[0, k]) + sin(self.X[2, k]) * (self.U[1, k]))
+            gRotx = vertcat(gRotx, rhsx)
+
+        for k in range(0, self.N):
+            rhsy = (-sin(self.X[2, k]) * (self.U[0, k]) + cos(self.X[2, k]) * (self.U[1, k]))
+            gRoty = vertcat(gRoty, rhsy)
+
+        self.opti.subject_to(self.opti.bounded(-0.6, gRotx, 0.6))
+        self.opti.subject_to(self.opti.bounded(0, gRoty, 0))
+
+
     def update_1(self, x, u, k):
         system_noise_cov = self.r1_pos_cov[:, k]
 
         return self.next_state_withSystemNoise(x, u, system_noise_cov)
 
-
-        #TODO: Finish the function Update 2 below
     def update_2(self, x, u, k):
 
         if self.first_contact == False:
             return self.update_3(x, u, k)
+        else:
 
-        return x
+
+            # obtain the current system noise covariance matrix of robot 1
+            system_noise_cov = self.r1_pos_cov[:, k]
+
+            # obtain the current robot 1 position
+            x_prev_r1 = x
+
+            # propagate robot 1 position, considering the effects of noise
+            xHat_next_r1_noUpdate = self.next_state_nominal(x_prev_r1, u)
+
+            # propagate the system noise covariance matrix of robot 1 from the RNN
+            system_noise_cov_next_r1 = self.r1_pos_cov[:, k+1]
+            P11_noUpdate = np.array([[self.opti.value(system_noise_cov_next_r1[0]),
+                                      self.opti.value(system_noise_cov_next_r1[1])],
+                                     [self.opti.value(system_noise_cov_next_r1[2]),
+                                      self.opti.value(system_noise_cov_next_r1[3])]])
+
+            # obtain robot 2 position and its covariance matrix from the RNN, note robot 2 position, covariance will not
+            # be updated, the update for robot 2 will occur in the MPC script for robot 2 in the next time step
+            xHat_next_r2_noUpdate = self.r2_traj[:, k+1]
+            system_noise_cov_next_r2 = self.r2_pos_cov[:, k+1]
+            P22_noUpdate = np.array([[self.opti.value(system_noise_cov_next_r2[0]),
+                                      self.opti.value(system_noise_cov_next_r2[1])],
+                                     [self.opti.value(system_noise_cov_next_r2[2]),
+                                      self.opti.value(system_noise_cov_next_r2[3])]])
+
+            # calculate x_next_r1 (this is used for calculating our measurements)
+            x_next_r1 = self.next_state_withSystemNoise(x_prev_r1, u, system_noise_cov)
+
+            # TODO: x_next_r2 needs to equal the dynamic equations of the quadrotor (CHANGE in the future)
+            # calculate x_next_r2
+            x_next_r2 = xHat_next_r2_noUpdate
+
+            # take measurement
+            z = x_next_r1 - x_next_r2
+
+            # obtain the relative measurement uncertainty (based on communication uncertainty)
+            R12 = self.relative_measurement_noise_cov
+
+            # TODO: the self.P21 term must come from robot 2 (CHANGE in the future)
+            # calculate the S matrix
+            P21 = self.P12.T
+            S = P11_noUpdate - self.P12 - P21 + P22_noUpdate + R12
+
+            # calculate the inverse S matrix, if not possible, assume zeros
+            try:
+                S_inv = np.linalg.inv(S)
+
+            except np.linalg.LinAlgError as err:
+                if 'Singular matrix' in str(err):
+                    S_inv = np.zeros((2, 2))
+                else:
+                    S_inv = np.zeros((2, 2))
+
+            # calculate the kalman gain K
+            K = mtimes(P11_noUpdate - self.P12, S_inv)
+
+            # update x_hat of robot 1
+            xHat_next_r1_update = xHat_next_r1_noUpdate[0:2] + mtimes(K, (
+                        z[0:2] - (xHat_next_r1_noUpdate[0:2] - xHat_next_r2_noUpdate[0:2])))
+            xHat_next_r1_update = vertcat(xHat_next_r1_update, x_next_r1[2])
+
+            # update the covariance system noise matrix of robot 1 with the updated matrix
+            P11_update = P11_noUpdate - mtimes(mtimes((P11_noUpdate - self.P12), S_inv), P11_noUpdate - P21)
+
+            # update the covariance system noise matrix for robot 1 and 2
+            self.P12 = mtimes(mtimes(P11_noUpdate, S_inv), P22_noUpdate)
+
+            self.opti.set_value(self.r1_pos_cov[0, k + 1], P11_update[0])
+            self.opti.set_value(self.r1_pos_cov[1, k + 1], P11_update[1])
+            self.opti.set_value(self.r1_pos_cov[2, k + 1], P11_update[2])
+            self.opti.set_value(self.r1_pos_cov[3, k + 1], P11_update[3])
+
+        return xHat_next_r1_update
 
     def update_3(self, x, u, k):
 
@@ -281,7 +364,8 @@ class SMPC_UGV_Planner():
         # calculate x_next_r1 (this is used for calculating our measurements)
         x_next_r1 = self.next_state_withSystemNoise(x_prev_r1, u, system_noise_cov)
 
-        # calculate x_next_r2 # TODO: x_next_r2 needs to equal the dynamic equations of the quadrotor (CHANGE in the future)
+        # TODO: x_next_r2 needs to equal the dynamic equations of the quadrotor (CHANGE in the future)
+        # calculate x_next_r2
         x_next_r2 = xHat_next_r2_noUpdate
 
         # take measurement
@@ -307,7 +391,8 @@ class SMPC_UGV_Planner():
         K = mtimes(P11_noUpdate, S_inv)
 
         # update x_hat of robot 1
-        xHat_next_r1_update = xHat_next_r1_noUpdate[0:2] + mtimes(K, (z[0:2] - (xHat_next_r1_noUpdate[0:2] - xHat_next_r2_noUpdate[0:2])))
+        xHat_next_r1_update = xHat_next_r1_noUpdate[0:2] + mtimes(K, (z[0:2] - (xHat_next_r1_noUpdate[0:2] -
+                                                                                xHat_next_r2_noUpdate[0:2])))
         xHat_next_r1_update = vertcat(xHat_next_r1_update, x_next_r1[2])
 
         # update the covariance system noise matrix of robot 1 with the updated matrix
@@ -327,11 +412,14 @@ class SMPC_UGV_Planner():
         return xHat_next_r1_update
 
 
-    def chance_constraints(self):
+    def chance_constraints(self, obs):
         pass
 
     def value_function(self):
-        pass
+        # get value from the objective function
+        stats = self.opti.stats()
+        value_func = stats["iterations"]["obj"]
+        return value_func
 
 
     def animate(self, curr_pos):
@@ -354,30 +442,30 @@ if __name__ == '__main__':
     dT = 0.1
     mpc_horizon = 10
     curr_pos = np.array([0,0,0]).reshape(3,1)
-    goal_pos = np.array([10,0,0]).reshape(3,1)
+    goal_pos = np.array([10,10,0]).reshape(3,1)
     robot_size = 0.5
-    max_nObstacles = 10
+    max_nObstacles = 2
     field_of_view = {'max_distance': 10.0, 'angle_range': [45, 135]}
-    lb_state = np.array([[-20], [-20], [-10**10]], dtype=float)
-    ub_state = np.array([[20], [20], [10**10]], dtype=float)
-    lb_control = np.array([[-0.6], [-np.pi/4]], dtype=float)
-    ub_control = np.array([[0.6], [np.pi/4]], dtype=float)
-    Q = np.array([[1, 0, 0], [0, 5, 0], [0, 0, 0.1]])
-    R = np.array([[0.5, 0], [0, 0.05]])
-    P = np.array([[1, 0, 0], [0, 5, 0], [0, 0, 0.1]])
-    G = np.array([[0.5, 0], [0, 0.05]])
+    lb_state = np.array([[-20], [-20], [-pi]], dtype=float)
+    ub_state = np.array([[20], [20], [pi]], dtype=float)
+    lb_control = np.array([[-0.5], [-0.5], [-np.pi/6]], dtype=float)
+    ub_control = np.array([[0.5], [0.5], [np.pi/6]], dtype=float)
+
+
+    Q = np.array([[1, 0, 0], [0, 1, 0], [0, 0, 0.1]])
+    R = np.array([[0.5, 0, 0], [0, 0.5, 0], [0, 0, 0.0005]])
     angle_noise_r1 = 0.1
     angle_noise_r2 = 0.0
-    relative_measurement_noise_cov = np.array([[1,0], [0,1]])
+    relative_measurement_noise_cov = np.array([[0.1,0], [0,0.1]])
     maxComm_distance = 0
     animate = True
 
     SMPC = SMPC_UGV_Planner(dT, mpc_horizon, curr_pos, goal_pos, robot_size, max_nObstacles, field_of_view, lb_state,
-                            ub_state, lb_control, ub_control, Q, R, P, G, angle_noise_r1, angle_noise_r2,
+                            ub_state, lb_control, ub_control, Q, R, angle_noise_r1, angle_noise_r2,
                             relative_measurement_noise_cov, maxComm_distance, animate)
 
 
-    while m.sqrt((curr_pos[0] - goal_pos[0]) ** 2 + (curr_pos[1] - goal_pos[1]) ** 2) > 1:
+    while m.sqrt((curr_pos[0] - goal_pos[0]) ** 2 + (curr_pos[1] - goal_pos[1]) ** 2) > .1:
 
         sol = SMPC.opti.solve()
         x = sol.value(SMPC.X)[:,1]
