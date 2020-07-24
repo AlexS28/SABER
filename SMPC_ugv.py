@@ -12,6 +12,8 @@ from mpl_toolkits import mplot3d
 import matplotlib.pyplot as plt
 import math as m
 import control
+from scipy.stats import linregress
+from scipy import special
 
 class SMPC_UGV_Planner():
 
@@ -66,6 +68,9 @@ class SMPC_UGV_Planner():
         self.curr_pos = curr_pos
         # initialize robot's goal position
         self.goal_pos = goal_pos
+        # initialize the current positional uncertainty (and add the robot size to it)
+        # TODO: this is a temporary fix for testing
+        self.r1_cov_curr = np.array([[0.2+self.robot_size, 0], [0, 0.2+self.robot_size]])
         # initialize cross diagonal system noise covariance matrix
         self.P12 = np.array([[0,0], [0,0]])
         # bool variable to indicate whether the robot has made first contact with the uav
@@ -233,6 +238,13 @@ class SMPC_UGV_Planner():
         self.opti.subject_to(self.X[:, self.N] == next_state)
 
         # provide rotational constraints
+        self.rotation_constraints()
+
+        # provide chance constraints
+        self.chance_constraints()
+
+    def rotation_constraints(self):
+
         gRotx = []
         gRoty = []
 
@@ -412,8 +424,42 @@ class SMPC_UGV_Planner():
         return xHat_next_r1_update
 
 
-    def chance_constraints(self, obs):
-        pass
+    def chance_constraints(self):
+
+        obstacle = {'vertices': [[10, 4.3], [5, 4.2], [8.0, 5.2], [4.8, 5.5]], 'num_lines': 4}
+
+        obs = obstacle['vertices']
+
+        x = [obs[0][0], obs[1][0]]
+        y = [obs[0][1], obs[1][1]]
+
+
+        slope, intercept, _, _, _ = linregress(x, y)
+
+        self.slope_line = slope
+        self.intercept = intercept
+
+        slope_inv = -1 / (slope)
+
+        slope_inv = np.array([1, slope_inv])
+
+        normalized_slope_inv = (slope_inv / np.sqrt(np.sum(slope_inv ** 2)))
+
+        #normalized_slope_inv = float(normalized_slope[1]/normalized_slope[0])
+
+        a = np.array([normalized_slope_inv]).reshape(1,2)
+
+        print(a)
+
+        #flag = if_else(X[0, i] >= 15, 1, 0)
+        #opti.subject_to(X[1, i] * flag ->= 2.5 * flag)
+
+        # TODO: Replace self.r1_cov_curr with a the general covariance matrix in position from the RNN
+        c = np.sqrt(2*np.dot(np.dot(a, self.r1_cov_curr), np.transpose(a)))*special.erfinv(float(1-2*0.5))
+
+        for i in range(0, self.N+1):
+            self.opti.subject_to(mtimes(a, self.X[0:2, i]) - intercept >= c)
+
 
     def value_function(self):
         # get value from the objective function
@@ -433,16 +479,29 @@ class SMPC_UGV_Planner():
         y_togo = 2 * np.sin(curr_pos[2])
 
         self.ax.quiver(curr_pos[0], curr_pos[1], 0, x_togo, y_togo, 0, color='red', alpha=.8, lw=3)
+
+        x, y = self.abline(self.slope_line, self.intercept)
+
+        self.ax.plot(x, y, 'k--', alpha =0.8, linewidth=0.5)
         plt.pause(0.001)
 
+    def abline(self, slope, intercept):
+        """Plot a line from slope and intercept"""
+        axes = plt.gca()
+        x_vals = np.array(axes.get_xlim())
+        y_vals = intercept + slope * x_vals
+
+        return x_vals, y_vals
+
+        #plt.plot(x_vals, y_vals, '--')
 
 
 if __name__ == '__main__':
     # initialize all required variables for the SMPC solver
     dT = 0.1
-    mpc_horizon = 10
-    curr_pos = np.array([0,0,0]).reshape(3,1)
-    goal_pos = np.array([10,10,0]).reshape(3,1)
+    mpc_horizon = 2
+    curr_pos = np.array([10,10,0]).reshape(3,1)
+    goal_pos = np.array([0,0,0]).reshape(3,1)
     robot_size = 0.5
     max_nObstacles = 2
     field_of_view = {'max_distance': 10.0, 'angle_range': [45, 135]}
@@ -451,13 +510,12 @@ if __name__ == '__main__':
     lb_control = np.array([[-0.5], [-0.5], [-np.pi/6]], dtype=float)
     ub_control = np.array([[0.5], [0.5], [np.pi/6]], dtype=float)
 
-
     Q = np.array([[1, 0, 0], [0, 1, 0], [0, 0, 0.1]])
     R = np.array([[0.5, 0, 0], [0, 0.5, 0], [0, 0, 0.0005]])
-    angle_noise_r1 = 0.1
+    angle_noise_r1 = 0.0
     angle_noise_r2 = 0.0
-    relative_measurement_noise_cov = np.array([[0.1,0], [0,0.1]])
-    maxComm_distance = 0
+    relative_measurement_noise_cov = np.array([[0.0,0], [0,0.0]])
+    maxComm_distance = -10
     animate = True
 
     SMPC = SMPC_UGV_Planner(dT, mpc_horizon, curr_pos, goal_pos, robot_size, max_nObstacles, field_of_view, lb_state,
@@ -472,146 +530,3 @@ if __name__ == '__main__':
         curr_pos = np.array(x).reshape(3,1)
         SMPC.opti.set_value(SMPC.r1_pos, x)
         SMPC.animate(curr_pos)
-
-
-
-
-
-
-
-
-
-
-
-
-"""
-        # inputs are the position of robot 1, robot 2, and their corresponding system noise covariance matrix provided
-        # by the RNN
-
-        # the output will be the updated state and also the updated system noise covariance matrix
-
-        # check if this is the first time both robots are making contact, and if they are within distance
-        if self.first_contact and np.linalg.norm(x_r1[0:2] - x_r2[0:2]) < self.maxComm_distance:
-
-            # calculate the measured state before update for both robots
-            # TODO use the correct x_hat for both robots
-            x_hat_r1 = 0
-            x_hat_r2 = 0
-
-            # calculate the relative positions of the two contacting robots
-            z = x_r1 - x_r2
-
-            # the system_noise_covariance will be a flattened 1x4 array, provided by the output of an RNN. We need to
-            # convert it into a 3x3 matrix. We will assume a constant noise in theta however.
-            #TODO Check to see if we need to include the off-diagonal values of the system noise covariance
-
-            system_noise_cov_converted_r1 = np.array([[system_noise_cov_r1[0], 0, 0], [0, system_noise_cov_r1[3], 0],
-            [0, 0, self.angle_noise_r1]])
-
-            system_noise_cov_converted_r2 = np.array([[system_noise_cov_r2[0], 0, 0], [0, system_noise_cov_r2[3], 0],
-            [0, 0, self.angle_noise_r2]])
-
-            P11 = system_noise_cov_converted_r1
-            P22 = system_noise_cov_converted_r2
-
-            # placeholder R12 (relative measurement noise between robot 1 and 2)
-            R12 = np.zeros(3,3)             #TODO: Add the correct R12 matrix here
-
-            # calculate the S matrix
-            S = P11 + P22 + R12
-
-            # calculate the inverse S matrix, if not possible, assume zeros
-            try:
-                S_inv = np.linalg.inv(S)
-
-            except ValueError:
-                S_inv = np.zeros(3, 3)
-
-            # update the cross-diagonal matrix
-            self.P12 = mtimes(mtimes(P11 * S_inv) * P22)
-
-            # calculate the kalman gain
-            K = mtimes(P11, S_inv)
-
-            # calculate the updated state for the ugv
-            x_hat_r1 = x_hat_r1 + mtimes(K, z - (x_hat_r1 - x_hat_r2))
-
-            # calculate the updated system noise covariance for the ugv
-            P11 = P11 - mtimes(mtimes(P11, S_inv), P11)
-
-            # ensure this function is only run at first contact
-            self.first_contact = False
-
-            return x_hat_r1, P11
-
-        # the second update and beyond, the following equations are used if both robots are within contact
-        elif (not self.first_contact) and np.linalg.norm(x_r1[0:2] - x_r2[0:2]) < self.maxComm_distance:
-
-            # calculate the measured state before update for both robots
-            # TODO use the correct x_hat for both robots
-            x_hat_r1 = 0
-            x_hat_r2 = 0
-
-            # calculate the relative positions of the two contacting robots
-            z = x_r1 - x_r2
-
-            # the system_noise_covariance will be a flattened 1x4 array, provided by the output of an RNN. We need to
-            # convert it into a 3x3 matrix. We will assume a constant noise in theta however.
-            # TODO Check to see if we need to include the off-diagonal values of the system noise covariance
-
-            system_noise_cov_converted_r1 = np.array([[system_noise_cov_r1[0], 0, 0], [0, system_noise_cov_r1[3], 0],
-            [0, 0, self.angle_noise_r1]])
-
-            system_noise_cov_converted_r2 = np.array([[system_noise_cov_r2[0], 0, 0], [0, system_noise_cov_r2[3], 0],
-            [0, 0, self.angle_noise_r2]])
-
-            P11_before_upd = system_noise_cov_converted_r1
-            P22_before_upd = system_noise_cov_converted_r2
-
-            # placeholder R12 (relative measurement noise between robot 1 and 2)
-            R12 = np.zeros(3,3)             #TODO: Add the correct R12 matrix here
-
-            # calculate the S matrix
-            S = P11_before_upd - self.P12 - np.transpose(self.P12) + P22_before_upd + R12
-
-            # calculate the inverse S matrix, if not possible, assume zeros
-            try:
-                S_inv = np.linalg.inv(S)
-
-            except ValueError:
-                S_inv = np.zeros(3, 3)
-
-            # calculate the kalman gain
-            K = mtimes((P11_before_upd - self.P12), S_inv)
-
-            # calculate the updated state for the ugv
-            x_hat_r1 = x_hat_r1 + mtimes(K, z - (x_hat_r1 - x_hat_r2))
-
-
-            # calculate the updated system noise covariance for the ugv
-            P11 = P11_before_upd - mtimes(mtimes((P11_before_upd - self.P12), S_inv), (P11_before_upd - self.P12))
-
-            # update the cross-diagonal matrix
-            # TODO double check the bottom and top equations, could be incorrect
-            self.P12 = self.P12 - mtimes(mtimes((P11_before_upd - self.P12), S_inv), (self.P12 - P22_before_upd))
-
-            return x_hat_r1, P11
-
-        # if the robots are not in contact range, then no cooperative localization calculations can be done
-        else:
-            # calculate the measured state before update for both robots
-            x_hat_r1 = x_r1 + numpy.random.multivariate_normal(0, self.measurement_noise_cov_r1, check_valid='warn')
-
-            # the system_noise_covariance will be a flattened 1x4 array, provided by the output of an RNN. We need to
-            # convert it into a 3x3 matrix. We will assume a constant noise in theta however.
-            # TODO Check to see if we need to include the off-diagonal values of the system noise covariance
-            system_noise_cov_converted_r1 = np.array([[system_noise_cov_r1[0], 0, 0], [0, system_noise_cov_r1[3], 0],
-                                                      [0, 0, self.angle_noise_r1]])
-            P11 = system_noise_cov_converted_r1
-
-
-            return x_hat_r1, P11
-
-    def obj(self):
-        pass
-"""
