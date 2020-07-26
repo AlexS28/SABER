@@ -77,6 +77,7 @@ class SMPC_UGV_Planner():
         # initialize the current positional uncertainty (and add the robot size to it)
         # TODO: this is a temporary fix for testing
         self.r1_cov_curr = np.array([[0.1+self.robot_size, 0], [0, 0.1+self.robot_size]])
+        #self.r1_cov_curr = np.array([[0, 0], [0, 0]])
         # initialize cross diagonal system noise covariance matrix
         self.P12 = np.array([[0,0], [0,0]])
         # bool variable to indicate whether the robot has made first contact with the uav
@@ -89,15 +90,10 @@ class SMPC_UGV_Planner():
         if animate:
             plt.ion()
             fig = plt.figure()
-            #fig.canvas.mpl_connect('key_release_event',
-            #                       lambda event: [exit(0) if event.key == 'escape' else None])
-
-            #self.ax = fig.add_subplot(111, projection='3d')
+            fig.canvas.mpl_connect('key_release_event',
+                                   lambda event: [exit(0) if event.key == 'escape' else None])
+            self.ax = fig.add_subplot(111, projection='3d')
             self.ax = Axes3D(fig)
-
-
-
-
             u = np.linspace(0, 2 * np.pi, 100)
             v = np.linspace(0, np.pi, 100)
             self.x_fig = np.outer(self.robot_size * np.cos(u), np.sin(v))
@@ -119,13 +115,8 @@ class SMPC_UGV_Planner():
         self.vx = self.U[0,:]
         self.vy = self.U[1, :]
         self.w = self.U[2,:]
+        #self.slack = self.U[3,:]
         self.opti.set_initial(self.U, 0)
-
-        # TODO: Incorporate the slack variables
-        # initialize slack variables for states for prediction horizon N
-        self.S1 = self.opti.variable(2, self.N)
-        # initialize slack variable for the terminal state, N+1
-        self.ST = self.opti.variable(2, 1)
 
         # initialize the current robot pos (x, y and th current position)
         self.r1_pos = self.opti.parameter(3, 1)
@@ -152,6 +143,12 @@ class SMPC_UGV_Planner():
         # must be positive semi-definite, from t to N
         self.r2_pos_cov = self.opti.parameter(4, self.N)
         self.opti.set_value(self.r2_pos_cov, 0)
+
+        self.flag = self.opti.variable(3, self.N+1)
+
+        self.flag_const = self.opti.parameter(3, 1)
+        self.opti.set_value(self.flag_const, -1)
+
 
     # objective function, with consideration of a final terminal state
     def obj(self):
@@ -181,20 +178,13 @@ class SMPC_UGV_Planner():
     def pre_solve(self):
         # create a warm-start for the mpc, and initiate the solver
         # options for solver
-        opts = {'ipopt': {'print_level': False, 'acceptable_tol': 10**-5,
-                          'acceptable_obj_change_tol': 10**-5}}
 
+        opts = {'ipopt.print_level': False, 'ipopt.acceptable_tol': 10**-2,
+                          'ipopt.acceptable_obj_change_tol': 10**-3, 'ipopt.warm_start_init_point':'yes'} #'ipopt.linear_system_scaling': 'slack-based'}
         opts.update({'print_time': 0})
-
         # create the solver
         self.opti.solver('ipopt', opts)
 
-        # create a warm-start for the MPC
-        sol = self.opti.solve()
-        x = sol.value(self.X)[:, 1]
-        self.curr_pos = np.array(x).reshape(3, 1)
-        self.opti.set_value(self.r1_pos, x)
-        self.opti.set_value(self.angle_noise, self.angle_noise_r1)
 
     # the nominal next state is calculated for use as a terminal constraint in the objective function
     def next_state_nominal(self, x, u):
@@ -270,7 +260,7 @@ class SMPC_UGV_Planner():
             gRoty = vertcat(gRoty, rhsy)
 
         self.opti.subject_to(self.opti.bounded(-0.6, gRotx, 0.6))
-        self.opti.subject_to(self.opti.bounded(0, gRoty, 0))
+        self.opti.subject_to(self.opti.bounded(-0.1, gRoty, 0.1))
 
 
     def update_1(self, x, u, k):
@@ -439,54 +429,49 @@ class SMPC_UGV_Planner():
 
     def chance_constraints(self):
 
-
-        #obstacle = {'vertices': [[10, 4.1], [5, 4.2], [8.0, 5.2], [4.8, 5.5]], 'num_lines': 4}
-
         obstacle = {'vertices':[[5, 5], [6, 7], [7, 5.2]]}
         obs = obstacle['vertices']
 
-        x = [obs[1][0], obs[2][0]]
-        y = [obs[1][1], obs[2][1]]
+        x = [obs[0][0], obs[1][0]]
+        y = [obs[0][1], obs[1][1]]
 
         slope_line, intercept, _, _, _ = linregress(x, y)
         self.slope_line = slope_line
         self.intercept = intercept
 
-        #dx = x[0] - x[1]
-        #dy = y[0] - y[1]
+        dx = x[0] - x[1]
+        dy = y[0] - y[1]
 
-        #print(slope_line)
-        #print(dy/dx)
+        a1 = np.array([dy,-dx]).reshape(2,1)
+        b1 = intercept
 
-        #a1 = np.array([dy,-dx]).reshape(2,1)
-        #print(a1)
-        #a1 = (a1 / np.sqrt(np.sum(a1 ** 2))).reshape(2,1)
-        #print(a1)
-        #b1 = intercept
+        a2 = np.array([1.8, 1]).reshape(2, 1)
+        b2 = self.obs[1]['intercepts'][1]
 
-        # TODO: a2 and a3 are working, but not a1
+        a3 = self.obs[1]['a'][:,2].reshape(2,1)
+        b3 = self.obs[1]['intercepts'][2]*-1
 
-        #a1 = self.obs[1]['a'][:,0].reshape(2,1)
-        #b1 = self.obs[1]['intercepts'][0]
-
-        #a2 = np.array([1.8, 1]).reshape(2, 1)
-        #b2 = self.obs[1]['intercepts'][1]
-
-        #a3 = self.obs[1]['a'][:,2].reshape(2,1)
-        #b3 = self.obs[1]['intercepts'][2]
-        #a3[0] = a1[0]*-1
-
-        #flag = if_else(X[0, i] >= 15, 1, 0)
-        #opti.subject_to(X[1, i] * flag ->= 2.5 * flag)
-
+        a3[0] = a3[0]
+        a3[1] = a3[1]*-1
 
 
         # TODO: Replace self.r1_cov_curr with a the general covariance matrix in position from the RNN
 
-        c1 = np.sqrt(np.dot(np.dot(2*np.transpose(a1), self.r1_cov_curr), a1)) * special.erfinv(float(1 - 2 * 0.5))
+        c1 = np.sqrt(np.dot(np.dot(2*np.transpose(a1), self.r1_cov_curr), a1)) * special.erfinv((1 - 2 * 0.5))
+        c2 = np.sqrt(np.dot(np.dot(2*np.transpose(a2), self.r1_cov_curr), a2)) * special.erfinv((1 - 2 * 0.5))
+        c3 = np.sqrt(np.dot(np.dot(2*np.transpose(a3), self.r1_cov_curr), a3)) * special.erfinv((1 - 2 * 0.5))
 
         for i in range(0, self.N+1):
-            self.opti.subject_to(mtimes(np.transpose(a1), self.X[0:2, i]) - b1 >= c1)
+            self.flag[0,i] = if_else(mtimes(np.transpose(a1), self.X[0:2, i]) - b1 >= c1, 1, -1)
+            self.flag[1,i] = if_else(mtimes(np.transpose(a2), self.X[0:2, i]) - b2 >= c2, 1, -1)
+            self.flag[2,i] = if_else(mtimes(np.transpose(a3), self.X[0:2, i]) - b3 >= c3, 1, -1)
+            self.flag[:,i] = if_else(cumsum(self.flag[:,i]) == -3, self.flag_const, self.flag[:,i])
+
+        for i in range(0, self.N+1):
+
+            self.opti.subject_to(mtimes((mtimes(np.transpose(a1), self.X[0:2, i]) - b1), self.flag[0,i]) >= c1)
+            self.opti.subject_to(mtimes((mtimes(np.transpose(a2), self.X[0:2, i]) - b2), self.flag[1,i]) >= c2)
+            self.opti.subject_to(mtimes((mtimes(np.transpose(a3), self.X[0:2, i]) - b3), self.flag[2,i]) >= c3)
 
 
     def value_function(self):
@@ -604,9 +589,9 @@ if __name__ == '__main__':
 
     # initialize all required variables for the SMPC solver
     dT = 0.1
-    mpc_horizon = 2
-    curr_pos = np.array([8,8,0]).reshape(3,1)
-    goal_pos = np.array([0,0,0]).reshape(3,1)
+    mpc_horizon = 4
+    curr_pos = np.array([0,0,0]).reshape(3,1)
+    goal_pos = np.array([10,10,0]).reshape(3,1)
     robot_size = 0.5
     max_nObstacles = 2
     field_of_view = {'max_distance': 10.0, 'angle_range': [45, 135]}
@@ -623,7 +608,6 @@ if __name__ == '__main__':
     maxComm_distance = -10
     animate = True
     # initialize obstacles to be seen
-    # TODO: cannot handle strictly vertical or horizontal lines
     obs = {1: {'vertices': [[5, 5], [6, 7], [7, 5.2]], 'a': [], 'slopes': [], 'intercepts': [], 'risk': 0.1}}
     obs.update(
         {2: {'vertices': [[5, 5], [6, 7], [7, 5.2]], 'a': [], 'intercepts': [], 'risk': 0.9}})
@@ -638,6 +622,11 @@ if __name__ == '__main__':
 
         sol = SMPC.opti.solve()
         x = sol.value(SMPC.X)[:,1]
+        SMPC.opti.set_value(SMPC.flag_const, sol.value(SMPC.flag[:,0]))
+        print(SMPC.opti.value(SMPC.flag_const))
         curr_pos = np.array(x).reshape(3,1)
         SMPC.opti.set_value(SMPC.r1_pos, x)
         SMPC.animate(curr_pos)
+
+
+
