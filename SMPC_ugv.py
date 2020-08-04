@@ -16,9 +16,6 @@ import control
 from scipy.stats import linregress
 from scipy import special
 
-
-import scipy as sp
-
 class SMPC_UGV_Planner():
 
     def __init__(self, dT, mpc_horizon, curr_pos, goal_pos, robot_size, max_nObstacles, field_of_view, lb_state,
@@ -109,7 +106,6 @@ class SMPC_UGV_Planner():
         self.th = self.X[2, :]
         self.opti.set_initial(self.X, 0)
 
-
         # initialize, linear and angular velocity control variables (v, and w), and repeat above procedure
         self.U = self.opti.variable(3, self.N)
         self.vx = self.U[0,:]
@@ -144,10 +140,11 @@ class SMPC_UGV_Planner():
         self.r2_pos_cov = self.opti.parameter(4, self.N)
         self.opti.set_value(self.r2_pos_cov, 0)
 
-        self.flag = self.opti.variable(3, self.N+1)
+        self.Int = self.opti.variable(3, self.N+1)
 
-        self.flag_const = self.opti.parameter(3, 1)
-        self.opti.set_value(self.flag_const, -1)
+
+        #self.flag_const = self.opti.parameter(3, 1)
+        #self.opti.set_value(self.flag_const, -1)
 
 
     # objective function, with consideration of a final terminal state
@@ -179,11 +176,20 @@ class SMPC_UGV_Planner():
         # create a warm-start for the mpc, and initiate the solver
         # options for solver
 
-        opts = {'ipopt.print_level': False, 'ipopt.acceptable_tol': 10**-2,
-                          'ipopt.acceptable_obj_change_tol': 10**-3, 'ipopt.warm_start_init_point':'yes'} #'ipopt.linear_system_scaling': 'slack-based'}
-        opts.update({'print_time': 0})
+        OT_Boolvector_X = [0]*self.X.size()[0]*self.X.size()[1]
+        OT_Boolvector_U = [0]*self.U.size()[0]*self.U.size()[1]
+        OT_Boolvector_Int = [1]*self.Int.size()[0]*self.Int.size()[1]
+        OT_Boolvector = OT_Boolvector_X + OT_Boolvector_U + OT_Boolvector_Int
+
+        #opts = {'ipopt.print_level': False, 'ipopt.acceptable_tol': 10**-2,
+        #                  'ipopt.acceptable_obj_change_tol': 10**-3, 'ipopt.warm_start_init_point':'yes', 'discrete': OT_Boolvector}
+        #opts.update({'print_time': 0})
+
+        opts = {'bonmin.warm_start': 'interior_point', 'discrete': OT_Boolvector}
+
+
         # create the solver
-        self.opti.solver('ipopt', opts)
+        self.opti.solver('bonmin', opts)
 
 
     # the nominal next state is calculated for use as a terminal constraint in the objective function
@@ -221,15 +227,14 @@ class SMPC_UGV_Planner():
         #                                       self.X[0:2, self.N], self.ub_state[0:2] + self.S1))
         self.opti.subject_to(self.opti.bounded(self.lb_state, self.X, self.ub_state))
         self.opti.subject_to(self.opti.bounded(self.lb_control, self.U, self.ub_control))
+        self.opti.subject_to(self.opti.bounded(0, self.Int, 1))
+
 
         for k in range(0, self.N-1):
 
              next_state = if_else((sqrt((self.X[0, k] - self.r2_traj[0, k])**2 +
                                       (self.X[1, k] - self.r2_traj[1, k]**2)) >= self.maxComm_distance),
-                                 self.update_1(self.X[:,k], self.U[:,k], k), if_else((sqrt((self.X[0, k] -
-                                                                                            self.r2_traj[0, k])**2 +
-                                      (self.X[1, k] - self.r2_traj[1, k]**2)) < self.maxComm_distance),
-                                                                     self.update_2(self.X[:,k], self.U[:,k], k), 0))
+                                 self.update_1(self.X[:,k], self.U[:,k], k), self.update_2(self.X[:,k], self.U[:,k], k))
 
              self.opti.subject_to(self.X[:,k+1] == next_state)
 
@@ -260,7 +265,7 @@ class SMPC_UGV_Planner():
             gRoty = vertcat(gRoty, rhsy)
 
         self.opti.subject_to(self.opti.bounded(-0.6, gRotx, 0.6))
-        self.opti.subject_to(self.opti.bounded(-0.1, gRoty, 0.1))
+        self.opti.subject_to(self.opti.bounded(0, gRoty, 0))
 
 
     def update_1(self, x, u, k):
@@ -429,49 +434,75 @@ class SMPC_UGV_Planner():
 
     def chance_constraints(self):
 
+        """
         obstacle = {'vertices':[[5, 5], [6, 7], [7, 5.2]]}
         obs = obstacle['vertices']
 
         x = [obs[0][0], obs[1][0]]
         y = [obs[0][1], obs[1][1]]
-
         slope_line, intercept, _, _, _ = linregress(x, y)
         self.slope_line = slope_line
         self.intercept = intercept
-
         dx = x[0] - x[1]
         dy = y[0] - y[1]
-
-        a1 = np.array([dy,-dx]).reshape(2,1)
+        a1 = np.array([dy, -dx]).reshape(2, 1)
+        #rot = np.array([[0, -1], [1, 0]])
+        #a1 = np.dot(rot, a1)
+        a1 = (a1 / np.sqrt(np.sum(a1 ** 2))).reshape(2, 1)
         b1 = intercept
 
-        a2 = np.array([1.8, 1]).reshape(2, 1)
+
+        x = [obs[1][0], obs[2][0]]
+        y = [obs[1][1], obs[2][1]]
+        slope_line, intercept, _, _, _ = linregress(x, y)
+        self.slope_line = slope_line
+        self.intercept = intercept
+        dx = 1
+        dy = slope_line
+        a2 = np.array([dx, dy]).reshape(2, 1)
+        rot = np.array([[0, -1], [1, 0]])
+        a2 = np.dot(rot, a2)
+        b2 = intercept
+        """
+
+        # first two don't normalize, third must be normalized
+
+        a1 = self.obs[1]['a'][:,0].reshape(2,1)
+        b1 = self.obs[1]['intercepts'][0]
+        self.slope_line = self.obs[1]['slopes'][0]
+        self.intercept = b1
+
+        a2 = self.obs[1]['a'][:, 1].reshape(2, 1)
         b2 = self.obs[1]['intercepts'][1]
+        self.slope_line = self.obs[1]['slopes'][1]
+        self.intercept = b2
 
-        a3 = self.obs[1]['a'][:,2].reshape(2,1)
+        a3 = self.obs[1]['a'][:, 2].reshape(2, 1)
         b3 = self.obs[1]['intercepts'][2]*-1
-
-        a3[0] = a3[0]
-        a3[1] = a3[1]*-1
+        self.slope_line = self.obs[1]['slopes'][2]
+        self.intercept = b3
 
 
         # TODO: Replace self.r1_cov_curr with a the general covariance matrix in position from the RNN
 
-        c1 = np.sqrt(np.dot(np.dot(2*np.transpose(a1), self.r1_cov_curr), a1)) * special.erfinv((1 - 2 * 0.5))
-        c2 = np.sqrt(np.dot(np.dot(2*np.transpose(a2), self.r1_cov_curr), a2)) * special.erfinv((1 - 2 * 0.5))
-        c3 = np.sqrt(np.dot(np.dot(2*np.transpose(a3), self.r1_cov_curr), a3)) * special.erfinv((1 - 2 * 0.5))
+        c1 = np.sqrt(np.dot(np.dot(2*np.transpose(a1), self.r1_cov_curr), a1)) * special.erfinv((1 - 2 * 0.1))
+        #c2 = np.sqrt(np.dot(np.dot(2*np.transpose(a2), self.r1_cov_curr), a2)) * special.erfinv((1 - 2 * 0.2))
+        #c3 = np.sqrt(np.dot(np.dot(2*np.transpose(a3), self.r1_cov_curr), a3)) * special.erfinv((1 - 2 * 0.5))
 
-        for i in range(0, self.N+1):
-            self.flag[0,i] = if_else(mtimes(np.transpose(a1), self.X[0:2, i]) - b1 >= c1, 1, -1)
-            self.flag[1,i] = if_else(mtimes(np.transpose(a2), self.X[0:2, i]) - b2 >= c2, 1, -1)
-            self.flag[2,i] = if_else(mtimes(np.transpose(a3), self.X[0:2, i]) - b3 >= c3, 1, -1)
-            self.flag[:,i] = if_else(cumsum(self.flag[:,i]) == -3, self.flag_const, self.flag[:,i])
+        #for i in range(0, self.N+1):
+            #self.flag[0,i] = if_else(mtimes(np.transpose(a1), self.X[0:2, i]) - b1 >= c1, 1, -1)
+            #self.flag[1,i] = if_else(mtimes(np.transpose(a2), self.X[0:2, i]) - b2 >= c2, 1, -1)
+            #self.flag[2,i] = if_else(mtimes(np.transpose(a3), self.X[0:2, i]) - b3 >= c3, 1, -1)
+            #self.flag[:,i] = if_else(cumsum(self.flag[:,i]) == -3, self.flag_const, self.flag[:,i])
 
-        for i in range(0, self.N+1):
+        #for i in range(0, self.N+1):
 
-            self.opti.subject_to(mtimes((mtimes(np.transpose(a1), self.X[0:2, i]) - b1), self.flag[0,i]) >= c1)
-            self.opti.subject_to(mtimes((mtimes(np.transpose(a2), self.X[0:2, i]) - b2), self.flag[1,i]) >= c2)
-            self.opti.subject_to(mtimes((mtimes(np.transpose(a3), self.X[0:2, i]) - b3), self.flag[2,i]) >= c3)
+            #self.opti.subject_to(mtimes((mtimes(np.transpose(a1), self.X[0:2, i]) - b1), self.flag[0,i]) >= c1)
+            #self.opti.subject_to(mtimes((mtimes(np.transpose(a2), self.X[0:2, i]) - b2), self.flag[1,i]) >= c2)
+            #self.opti.subject_to(mtimes((mtimes(np.transpose(a3), self.X[0:2, i]) - b3), self.flag[2,i]) >= c3)
+
+            #self.opti.subject_to(((mtimes(np.transpose(a1), self.X[0:2, i]) - b1)) >= c1)
+            #self.opti.subject_to(((mtimes(np.transpose(a2), self.X[0:2, i]) - b2)) >= c2)
 
 
     def value_function(self):
@@ -496,16 +527,22 @@ class SMPC_UGV_Planner():
 
                 x = [point_1[0], point_2[0]]
                 y = [point_1[1], point_2[1]]
-
                 slope, intercept, _, _, _ = linregress(x, y)
+
+                slopeX = x[1] - x[0]
+                slopeY = y[1] - y[0]
+
+
                 slopes = np.append(slopes, slope)
                 intercepts = np.append(intercepts, intercept)
+                slope_norm = np.array([slopeX, slopeY], dtype=float).reshape(2,1)
+                slope_norm_sum = np.sqrt(np.sum(slope_norm**2))
+                slope_norm[0] = slope_norm[0] #/ slope_norm_sum
+                slope_norm[1] = slope_norm[1] #/ slope_norm_sum
 
-                dx = x[0] - x[1]
-                dy = y[0] - y[1]
-                V = np.array([dy, dx])
-                a = (V / np.sqrt(np.sum(V ** 2))).reshape(1, 2)
-                a_vectors[:, j] = a
+                rot = np.array([[0, -1], [1, 0]])
+                a = np.dot(rot, slope_norm)
+                a_vectors[:, j] = a.reshape(1,2)
 
                 if it == len(obstacles[i]['vertices'])-1:
                     point_1 = obstacles[i]['vertices'][-1]
@@ -513,16 +550,21 @@ class SMPC_UGV_Planner():
 
                     x = [point_1[0], point_2[0]]
                     y = [point_1[1], point_2[1]]
-
                     slope, intercept, _, _, _ = linregress(x, y)
+
+                    slopeX = x[1] - x[0]
+                    slopeY = y[1] - y[0]
+
                     slopes = np.append(slopes, slope)
                     intercepts = np.append(intercepts, intercept)
 
-                    dx = x[0] - x[1]
-                    dy = y[0] - y[1]
-                    V = np.array([dy, dx])
-                    a = (V / np.sqrt(np.sum(V ** 2))).reshape(1, 2)
-                    a_vectors[:, -1] = a
+                    slope_norm = np.array([slopeX, slopeY], dtype=float).reshape(2, 1)
+                    slope_norm_sum = np.sqrt(np.sum(slope_norm ** 2))
+                    slope_norm[0] = slope_norm[0] / slope_norm_sum
+                    slope_norm[1] = slope_norm[1] / slope_norm_sum
+                    rot = np.array([[0, -1], [1, 0]])
+                    a = np.dot(rot, slope_norm)
+                    a_vectors[:, -1] = a.reshape(1,2)
 
             obstacles[i]['a'] = a_vectors
             obstacles[i]['slopes'] = slopes
@@ -582,16 +624,13 @@ class SMPC_UGV_Planner():
 
         return x_vals, y_vals
 
-        #plt.plot(x_vals, y_vals, '--')
-
-
 if __name__ == '__main__':
 
     # initialize all required variables for the SMPC solver
     dT = 0.1
-    mpc_horizon = 4
+    mpc_horizon = 2
     curr_pos = np.array([0,0,0]).reshape(3,1)
-    goal_pos = np.array([10,10,0]).reshape(3,1)
+    goal_pos = np.array([0.001,10,0]).reshape(3,1)
     robot_size = 0.5
     max_nObstacles = 2
     field_of_view = {'max_distance': 10.0, 'angle_range': [45, 135]}
@@ -610,7 +649,7 @@ if __name__ == '__main__':
     # initialize obstacles to be seen
     obs = {1: {'vertices': [[5, 5], [6, 7], [7, 5.2]], 'a': [], 'slopes': [], 'intercepts': [], 'risk': 0.1}}
     obs.update(
-        {2: {'vertices': [[5, 5], [6, 7], [7, 5.2]], 'a': [], 'intercepts': [], 'risk': 0.9}})
+        {2: {'vertices': [[5, 5], [6, 7], [7, 5.2]], 'a': [], 'slopes': [], 'intercepts': [], 'risk': 0.9}})
 
     SMPC = SMPC_UGV_Planner(dT, mpc_horizon, curr_pos, goal_pos, robot_size, max_nObstacles, field_of_view, lb_state,
                             ub_state, lb_control, ub_control, Q, R, angle_noise_r1, angle_noise_r2,
@@ -620,10 +659,11 @@ if __name__ == '__main__':
 
     while m.sqrt((curr_pos[0] - goal_pos[0]) ** 2 + (curr_pos[1] - goal_pos[1]) ** 2) > .1:
 
+
         sol = SMPC.opti.solve()
         x = sol.value(SMPC.X)[:,1]
-        SMPC.opti.set_value(SMPC.flag_const, sol.value(SMPC.flag[:,0]))
-        print(SMPC.opti.value(SMPC.flag_const))
+        #SMPC.opti.set_value(SMPC.flag_const, sol.value(SMPC.flag[:, SMPC.N]))
+        #print(SMPC.opti.value(SMPC.flag_const))
         curr_pos = np.array(x).reshape(3,1)
         SMPC.opti.set_value(SMPC.r1_pos, x)
         SMPC.animate(curr_pos)
