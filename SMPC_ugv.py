@@ -53,7 +53,7 @@ class SMPC_UGV_Planner():
         self.A = np.array([[1, 0, 0], [0, 1, 0], [0, 0, 1]])
         self.B = np.array([[self.dT, 0, 0], [0, self.dT, 0], [0, 0, self.dT]])
         # initialize the P matrix, which is the cost matrix that defines the optimal state feedback controller
-        _, self.P, _ = control.lqr(self.A, self.B, self.Q, self.R)
+        _, self.P, _ = control.lqr(self.A, self.B, self.Q, self.R[0:3,0:3])
 
         # initialize measurement noise (in our calculation, measurement noise is set by the user and is gaussian,
         # zero-mean). It largely represents the noise due to communication transmitters, or other sensor devices. It
@@ -107,12 +107,15 @@ class SMPC_UGV_Planner():
         self.opti.set_initial(self.X, 0)
 
         # initialize, linear and angular velocity control variables (v, and w), and repeat above procedure
-        self.U = self.opti.variable(3, self.N)
+        self.U = self.opti.variable(4, self.N)
         self.vx = self.U[0,:]
         self.vy = self.U[1, :]
         self.w = self.U[2,:]
-        #self.slack = self.U[3,:]
+        self.slack = self.U[3,:]
         self.opti.set_initial(self.U, 0)
+
+        # initialize the integer
+        self.I = self.opti.variable(3, self.N+1)
 
         # initialize the current robot pos (x, y and th current position)
         self.r1_pos = self.opti.parameter(3, 1)
@@ -140,13 +143,6 @@ class SMPC_UGV_Planner():
         self.r2_pos_cov = self.opti.parameter(4, self.N)
         self.opti.set_value(self.r2_pos_cov, 0)
 
-        self.Int = self.opti.variable(3, self.N+1)
-
-
-        #self.flag_const = self.opti.parameter(3, 1)
-        #self.opti.set_value(self.flag_const, -1)
-
-
     # objective function, with consideration of a final terminal state
     def obj(self):
         self.objFunc = 0
@@ -163,30 +159,27 @@ class SMPC_UGV_Planner():
         # add the terminal state to the objective function
         st = self.X[:, self.N]
         self.objFunc = self.objFunc + mtimes(mtimes((st - ref_st).T, self.P), st - ref_st)
+
         # initialize the constraints for the objective function
         self.init_constraints()
 
         # initialize the objective function into the solver
         self.opti.minimize(self.objFunc)
 
-        # create a warm-start for the mpc, and initiate the solver
+        # initiate the solver
         self.pre_solve()
 
     def pre_solve(self):
-        # create a warm-start for the mpc, and initiate the solver
-        # options for solver
+        # initiate the solver called bonmin - performs Mixed-Integer Nonlinear Programming (MINLP)
 
+        # ensure states X, and controls U are continues, while I variables are integers
         OT_Boolvector_X = [0]*self.X.size()[0]*self.X.size()[1]
         OT_Boolvector_U = [0]*self.U.size()[0]*self.U.size()[1]
-        OT_Boolvector_Int = [1]*self.Int.size()[0]*self.Int.size()[1]
+        OT_Boolvector_Int = [1]*self.I.size()[0]*self.I.size()[1]
         OT_Boolvector = OT_Boolvector_X + OT_Boolvector_U + OT_Boolvector_Int
 
-        #opts = {'ipopt.print_level': False, 'ipopt.acceptable_tol': 10**-2,
-        #                  'ipopt.acceptable_obj_change_tol': 10**-3, 'ipopt.warm_start_init_point':'yes', 'discrete': OT_Boolvector}
-        #opts.update({'print_time': 0})
-
-        opts = {'bonmin.warm_start': 'interior_point', 'discrete': OT_Boolvector}
-
+        opts = {'bonmin.warm_start': 'interior_point', 'discrete': OT_Boolvector, 'error_on_fail': True,
+            'bonmin.acceptable_tol': 10**-2, 'bonmin.acceptable_obj_change_tol': 10**10}
 
         # create the solver
         self.opti.solver('bonmin', opts)
@@ -227,19 +220,29 @@ class SMPC_UGV_Planner():
         #                                       self.X[0:2, self.N], self.ub_state[0:2] + self.S1))
         self.opti.subject_to(self.opti.bounded(self.lb_state, self.X, self.ub_state))
         self.opti.subject_to(self.opti.bounded(self.lb_control, self.U, self.ub_control))
-        self.opti.subject_to(self.opti.bounded(0, self.Int, 1))
+
+        # provide constraints on the integer variable
+        self.opti.subject_to(self.opti.bounded(0, self.I, 1))
+
+
+        for i in range(0, self.N+1):
+            sum_I = 0
+            for j in range(0, self.I.shape[0]):
+                sum_I = sum_I + self.I[j,i]
+
+            self.opti.subject_to(sum_I == 1)
 
 
         for k in range(0, self.N-1):
 
              next_state = if_else((sqrt((self.X[0, k] - self.r2_traj[0, k])**2 +
                                       (self.X[1, k] - self.r2_traj[1, k]**2)) >= self.maxComm_distance),
-                                 self.update_1(self.X[:,k], self.U[:,k], k), self.update_2(self.X[:,k], self.U[:,k], k))
+                                 self.update_1(self.X[:,k], self.U[0:3,k], k), self.update_2(self.X[:,k], self.U[0:3,k], k))
 
              self.opti.subject_to(self.X[:,k+1] == next_state)
 
         # include the terminal constraint
-        next_state = self.next_state_nominal(self.X[:, self.N-1], self.U[:, self.N-1])
+        next_state = self.next_state_nominal(self.X[:, self.N-1], self.U[0:3, self.N-1])
         self.opti.subject_to(self.X[:, self.N] == next_state)
 
         # provide rotational constraints
@@ -434,39 +437,6 @@ class SMPC_UGV_Planner():
 
     def chance_constraints(self):
 
-        """
-        obstacle = {'vertices':[[5, 5], [6, 7], [7, 5.2]]}
-        obs = obstacle['vertices']
-
-        x = [obs[0][0], obs[1][0]]
-        y = [obs[0][1], obs[1][1]]
-        slope_line, intercept, _, _, _ = linregress(x, y)
-        self.slope_line = slope_line
-        self.intercept = intercept
-        dx = x[0] - x[1]
-        dy = y[0] - y[1]
-        a1 = np.array([dy, -dx]).reshape(2, 1)
-        #rot = np.array([[0, -1], [1, 0]])
-        #a1 = np.dot(rot, a1)
-        a1 = (a1 / np.sqrt(np.sum(a1 ** 2))).reshape(2, 1)
-        b1 = intercept
-
-
-        x = [obs[1][0], obs[2][0]]
-        y = [obs[1][1], obs[2][1]]
-        slope_line, intercept, _, _, _ = linregress(x, y)
-        self.slope_line = slope_line
-        self.intercept = intercept
-        dx = 1
-        dy = slope_line
-        a2 = np.array([dx, dy]).reshape(2, 1)
-        rot = np.array([[0, -1], [1, 0]])
-        a2 = np.dot(rot, a2)
-        b2 = intercept
-        """
-
-        # first two don't normalize, third must be normalized
-
         a1 = self.obs[1]['a'][:,0].reshape(2,1)
         b1 = self.obs[1]['intercepts'][0]
         self.slope_line = self.obs[1]['slopes'][0]
@@ -486,30 +456,25 @@ class SMPC_UGV_Planner():
         # TODO: Replace self.r1_cov_curr with a the general covariance matrix in position from the RNN
 
         c1 = np.sqrt(np.dot(np.dot(2*np.transpose(a1), self.r1_cov_curr), a1)) * special.erfinv((1 - 2 * 0.1))
-        #c2 = np.sqrt(np.dot(np.dot(2*np.transpose(a2), self.r1_cov_curr), a2)) * special.erfinv((1 - 2 * 0.2))
-        #c3 = np.sqrt(np.dot(np.dot(2*np.transpose(a3), self.r1_cov_curr), a3)) * special.erfinv((1 - 2 * 0.5))
+        c2 = np.sqrt(np.dot(np.dot(2*np.transpose(a2), self.r1_cov_curr), a2)) * special.erfinv((1 - 2 * 0.1))
+        c3 = np.sqrt(np.dot(np.dot(2*np.transpose(a3), self.r1_cov_curr), a3)) * special.erfinv((1 - 2 * 0.1))
 
-        #for i in range(0, self.N+1):
-            #self.flag[0,i] = if_else(mtimes(np.transpose(a1), self.X[0:2, i]) - b1 >= c1, 1, -1)
-            #self.flag[1,i] = if_else(mtimes(np.transpose(a2), self.X[0:2, i]) - b2 >= c2, 1, -1)
-            #self.flag[2,i] = if_else(mtimes(np.transpose(a3), self.X[0:2, i]) - b3 >= c3, 1, -1)
-            #self.flag[:,i] = if_else(cumsum(self.flag[:,i]) == -3, self.flag_const, self.flag[:,i])
+        for i in range(0, self.N+1):
 
-        #for i in range(0, self.N+1):
+            if i == self.N:
+                slack = self.U[3, -1]
+            else:
+                slack = self.U[3, i]
 
-            #self.opti.subject_to(mtimes((mtimes(np.transpose(a1), self.X[0:2, i]) - b1), self.flag[0,i]) >= c1)
-            #self.opti.subject_to(mtimes((mtimes(np.transpose(a2), self.X[0:2, i]) - b2), self.flag[1,i]) >= c2)
-            #self.opti.subject_to(mtimes((mtimes(np.transpose(a3), self.X[0:2, i]) - b3), self.flag[2,i]) >= c3)
-
-            #self.opti.subject_to(((mtimes(np.transpose(a1), self.X[0:2, i]) - b1)) >= c1)
-            #self.opti.subject_to(((mtimes(np.transpose(a2), self.X[0:2, i]) - b2)) >= c2)
+            self.opti.subject_to(((mtimes(np.transpose(a1), self.X[0:2, i]) - b1))*self.I[0, i] + slack >= c1*self.I[0, i])
+            self.opti.subject_to(((mtimes(np.transpose(a2), self.X[0:2, i]) - b2))*self.I[1, i] + slack >= c2*self.I[1, i])
+            self.opti.subject_to(((mtimes(np.transpose(a3), self.X[0:2, i]) - b3))*self.I[2, i] + slack >= c3*self.I[2, i])
 
 
     def value_function(self):
         # get value from the objective function
-        stats = self.opti.stats()
-        value_func = stats["iterations"]["obj"]
-        return value_func
+        value_fun = self.opti.value(self.opti.f)
+        return value_fun
 
 
     def init_obstacles(self, obstacles, animate):
@@ -627,20 +592,20 @@ class SMPC_UGV_Planner():
 if __name__ == '__main__':
 
     # initialize all required variables for the SMPC solver
-    dT = 0.1
-    mpc_horizon = 2
+    dT = 0.5
+    mpc_horizon = 5
     curr_pos = np.array([0,0,0]).reshape(3,1)
-    goal_pos = np.array([0.001,10,0]).reshape(3,1)
+    goal_pos = np.array([10,10,0]).reshape(3,1)
     robot_size = 0.5
     max_nObstacles = 2
     field_of_view = {'max_distance': 10.0, 'angle_range': [45, 135]}
     lb_state = np.array([[-20], [-20], [-pi]], dtype=float)
     ub_state = np.array([[20], [20], [pi]], dtype=float)
-    lb_control = np.array([[-0.5], [-0.5], [-np.pi/6]], dtype=float)
-    ub_control = np.array([[0.5], [0.5], [np.pi/6]], dtype=float)
+    lb_control = np.array([[-0.5], [-0.5], [-np.pi/6], [0]], dtype=float)
+    ub_control = np.array([[0.5], [0.5], [np.pi/6], [inf]], dtype=float)
 
     Q = np.array([[1, 0, 0], [0, 1, 0], [0, 0, 0.1]])
-    R = np.array([[0.5, 0, 0], [0, 0.5, 0], [0, 0, 0.0005]])
+    R = np.array([[0.5, 0, 0, 0], [0, 0.5, 0, 0], [0, 0, 0.0005, 0 ], [0, 0, 0, 50]])
     angle_noise_r1 = 0.0
     angle_noise_r2 = 0.0
     relative_measurement_noise_cov = np.array([[0.0,0], [0,0.0]])
@@ -662,6 +627,7 @@ if __name__ == '__main__':
 
         sol = SMPC.opti.solve()
         x = sol.value(SMPC.X)[:,1]
+
         #SMPC.opti.set_value(SMPC.flag_const, sol.value(SMPC.flag[:, SMPC.N]))
         #print(SMPC.opti.value(SMPC.flag_const))
         curr_pos = np.array(x).reshape(3,1)
