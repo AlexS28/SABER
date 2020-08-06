@@ -8,16 +8,19 @@ Copyright by RoMeLa (Robotics and Mechanisms Laboratory, University of Californi
 
 from casadi import *
 import numpy as np
-from mpl_toolkits import mplot3d
+from mpl_toolkits.mplot3d import Axes3D
+from mpl_toolkits.mplot3d.art3d import Poly3DCollection
 import matplotlib.pyplot as plt
 import math as m
 import control
+from scipy.stats import linregress
+from scipy import special
 
 class SMPC_UGV_Planner():
 
     def __init__(self, dT, mpc_horizon, curr_pos, goal_pos, robot_size, max_nObstacles, field_of_view, lb_state,
                  ub_state, lb_control, ub_control, Q, R, angle_noise_r1, angle_noise_r2,
-                 relative_measurement_noise_cov, maxComm_distance, animate):
+                 relative_measurement_noise_cov, maxComm_distance, obs, animate):
 
         # initialize Optistack class
         self.opti = casadi.Opti()
@@ -62,10 +65,16 @@ class SMPC_UGV_Planner():
         self.angle_noise_r2 = angle_noise_r2
         # initialize the maximum distance that robot 1 and 2 are allowed to have for cross communication
         self.maxComm_distance = maxComm_distance
+        # initialize obstacles
+        self.obs = obs
         # initialize robot's current position
         self.curr_pos = curr_pos
         # initialize robot's goal position
         self.goal_pos = goal_pos
+        # initialize the current positional uncertainty (and add the robot size to it)
+        # TODO: this is a temporary fix for testing
+        self.r1_cov_curr = np.array([[0.1+self.robot_size, 0], [0, 0.1+self.robot_size]])
+        #self.r1_cov_curr = np.array([[0, 0], [0, 0]])
         # initialize cross diagonal system noise covariance matrix
         self.P12 = np.array([[0,0], [0,0]])
         # bool variable to indicate whether the robot has made first contact with the uav
@@ -80,8 +89,8 @@ class SMPC_UGV_Planner():
             fig = plt.figure()
             fig.canvas.mpl_connect('key_release_event',
                                    lambda event: [exit(0) if event.key == 'escape' else None])
-
             self.ax = fig.add_subplot(111, projection='3d')
+            self.ax = Axes3D(fig)
             u = np.linspace(0, 2 * np.pi, 100)
             v = np.linspace(0, np.pi, 100)
             self.x_fig = np.outer(self.robot_size * np.cos(u), np.sin(v))
@@ -97,7 +106,6 @@ class SMPC_UGV_Planner():
         self.th = self.X[2, :]
         self.opti.set_initial(self.X, 0)
 
-
         # initialize, linear and angular velocity control variables (v, and w), and repeat above procedure
         self.U = self.opti.variable(3, self.N)
         self.vx = self.U[0,:]
@@ -105,11 +113,10 @@ class SMPC_UGV_Planner():
         self.w = self.U[2,:]
         self.opti.set_initial(self.U, 0)
 
-        # TODO: Incorporate the slack variables
-        # initialize slack variables for states for prediction horizon N
-        self.S1 = self.opti.variable(2, self.N)
-        # initialize slack variable for the terminal state, N+1
-        self.ST = self.opti.variable(2, 1)
+        self.slack = self.opti.variable(3, self.N + 1)
+
+        # initialize the integer
+        self.I = self.opti.variable(3, 1)
 
         # initialize the current robot pos (x, y and th current position)
         self.r1_pos = self.opti.parameter(3, 1)
@@ -140,46 +147,44 @@ class SMPC_UGV_Planner():
     # objective function, with consideration of a final terminal state
     def obj(self):
         self.objFunc = 0
-        ref_st = self.r1_goal
+        V = np.array([[10000, 0, 0], [0, 10000, 0], [0, 0, 10000]])
 
         for k in range(0, self.N-1):
 
             con = self.U[:, k]
             st = self.X[:, k+1]
 
-            self.objFunc = self.objFunc + mtimes(mtimes((st - ref_st).T, self.Q), st - ref_st) + mtimes(
-                mtimes(con.T, self.R), con)
+            self.objFunc = self.objFunc + mtimes(mtimes((st - self.r1_goal).T, self.Q), st - self.r1_goal) + mtimes(
+                mtimes(con.T, self.R), con) + mtimes(mtimes(self.slack[:,k+1].T, V), self.slack[:,k+1])
 
-        # add the terminal state to the objective function
         st = self.X[:, self.N]
-        self.objFunc = self.objFunc + mtimes(mtimes((st - ref_st).T, self.P), st - ref_st)
+        self.objFunc = self.objFunc + mtimes(mtimes((st - self.r1_goal).T, self.P), st - self.r1_goal) + \
+                       mtimes(mtimes(self.slack[:,self.N].T, V), self.slack[:,self.N])
+
         # initialize the constraints for the objective function
         self.init_constraints()
 
         # initialize the objective function into the solver
         self.opti.minimize(self.objFunc)
 
-        # create a warm-start for the mpc, and initiate the solver
+        # initiate the solver
         self.pre_solve()
 
     def pre_solve(self):
-        # create a warm-start for the mpc, and initiate the solver
-        # options for solver
-        opts = {'ipopt': {'print_level': False, 'acceptable_tol': 10**-5,
-                          'acceptable_obj_change_tol': 10**-5}}
+        # initiate the solver called bonmin - performs Mixed-Integer Nonlinear Programming (MINLP)
 
-        opts.update({'print_time': 0})
+        # ensure states X, and controls U are continues, while I variables are integers
+        OT_Boolvector_X = [0]*self.X.size()[0]*self.X.size()[1]
+        OT_Boolvector_U = [0]*self.U.size()[0]*self.U.size()[1]
+        OT_Boolvector_slack = [0] * self.slack.size()[0] * self.slack.size()[1]
+        OT_Boolvector_Int = [1]*self.I.size()[0]*self.I.size()[1]
+        OT_Boolvector = OT_Boolvector_X + OT_Boolvector_U + OT_Boolvector_slack + OT_Boolvector_Int
+
+        opts = {'bonmin.warm_start': 'interior_point', 'discrete': OT_Boolvector, 'error_on_fail': True,
+            }
 
         # create the solver
-        self.opti.solver('ipopt', opts)
-
-        # create a warm-start for the MPC
-        sol = self.opti.solve()
-        x = sol.value(self.X)[:, 1]
-        self.curr_pos = np.array(x).reshape(3, 1)
-        self.opti.set_value(self.r1_pos, x)
-        self.opti.set_value(self.angle_noise, self.angle_noise_r1)
-
+        self.opti.solver('bonmin', opts)
 
     # the nominal next state is calculated for use as a terminal constraint in the objective function
     def next_state_nominal(self, x, u):
@@ -210,41 +215,52 @@ class SMPC_UGV_Planner():
     def init_constraints(self):
         # constrain the current state
         self.opti.subject_to(self.X[:,0] == self.r1_pos)
-
-        # provide inequality constraints or bounds on the state and control variables, with the additional slack variable
-        #self.opti.subject_to(self.opti.bounded(self.lb_state[0:2]-self.S1,
-        #                                       self.X[0:2, self.N], self.ub_state[0:2] + self.S1))
         self.opti.subject_to(self.opti.bounded(self.lb_state, self.X, self.ub_state))
         self.opti.subject_to(self.opti.bounded(self.lb_control, self.U, self.ub_control))
+        self.opti.subject_to(self.opti.bounded([-0.5,-0.5,-pi/6], self.slack, [0.5,0.5,pi/6]))
+
+        # provide constraints on the integer variable
+        self.opti.subject_to(self.opti.bounded(0, self.I, 1))
+
+        sum_I = 0
+        for j in range(0, self.I.shape[0]):
+            sum_I = sum_I + self.I[j]
+        self.opti.subject_to(sum_I == 1)
 
         for k in range(0, self.N-1):
-
              next_state = if_else((sqrt((self.X[0, k] - self.r2_traj[0, k])**2 +
                                       (self.X[1, k] - self.r2_traj[1, k]**2)) >= self.maxComm_distance),
-                                 self.update_1(self.X[:,k], self.U[:,k], k), if_else((sqrt((self.X[0, k] -
-                                                                                            self.r2_traj[0, k])**2 +
-                                      (self.X[1, k] - self.r2_traj[1, k]**2)) < self.maxComm_distance),
-                                                                     self.update_2(self.X[:,k], self.U[:,k], k), 0))
+                                 self.update_1(self.X[:,k], self.U[0:3,k], k), self.update_2(self.X[:,k], self.U[0:3,k], k))
 
              self.opti.subject_to(self.X[:,k+1] == next_state)
 
         # include the terminal constraint
-        next_state = self.next_state_nominal(self.X[:, self.N-1], self.U[:, self.N-1])
-        self.opti.subject_to(self.X[:, self.N] == next_state)
+        next_state = self.next_state_nominal(self.X[:, self.N-1], self.U[0:3, self.N-1])
+        self.opti.subject_to(self.X[:, self.N]  == next_state)
 
         # provide rotational constraints
+        self.rotation_constraints()
+
+        # initialize the obstacles to be used by chance constraints
+        self.init_obstacles(self.obs, animate)
+
+        # provide chance constraints
+        self.chance_constraints()
+
+    def rotation_constraints(self):
+
         gRotx = []
         gRoty = []
 
         for k in range(0, self.N):
-            rhsx = (cos(self.X[2, k]) * (self.U[0, k]) + sin(self.X[2, k]) * (self.U[1, k]))
+            rhsx = (cos(self.X[2, k]+self.slack[2,k]) * (self.U[0, k]) + sin(self.X[2, k]+self.slack[2,k]) * (self.U[1, k]))
             gRotx = vertcat(gRotx, rhsx)
 
         for k in range(0, self.N):
-            rhsy = (-sin(self.X[2, k]) * (self.U[0, k]) + cos(self.X[2, k]) * (self.U[1, k]))
+            rhsy = (-sin(self.X[2, k]+self.slack[2,k]) * (self.U[0, k]) + cos(self.X[2, k]+self.slack[2,k]) * (self.U[1, k]))
             gRoty = vertcat(gRoty, rhsy)
 
-        self.opti.subject_to(self.opti.bounded(-0.6, gRotx, 0.6))
+        self.opti.subject_to(self.opti.bounded(-1.5, gRotx, 1.5))
         self.opti.subject_to(self.opti.bounded(0, gRoty, 0))
 
 
@@ -412,57 +428,211 @@ class SMPC_UGV_Planner():
         return xHat_next_r1_update
 
 
-    def chance_constraints(self, obs):
-        pass
+    def chance_constraints(self):
+
+        r = self.obs[1]['risk']
+        a1 = self.obs[1]['a'][:,0].reshape(2,1)
+        b1 = self.obs[1]['intercepts'][0]
+
+        a2 = self.obs[1]['a'][:, 1].reshape(2, 1)
+        b2 = self.obs[1]['intercepts'][1]
+
+        a3 = self.obs[1]['a'][:, 2].reshape(2, 1)
+        b3 = self.obs[1]['intercepts'][2]
+
+        # TODO: Replace self.r1_cov_curr with a the general covariance matrix in position from the RNN
+
+        c1 = np.sqrt(np.dot(np.dot(2*np.transpose(a1), self.r1_cov_curr), a1)) * special.erfinv((1 - 2 * r))
+        c2 = np.sqrt(np.dot(np.dot(2*np.transpose(a2), self.r1_cov_curr), a2)) * special.erfinv((1 - 2 * r))
+        c3 = np.sqrt(np.dot(np.dot(2*np.transpose(a3), self.r1_cov_curr), a3)) * special.erfinv((1 - 2 * r))
+
+        for i in range(0, self.N+1):
+
+            self.opti.subject_to(((mtimes(np.transpose(a1), self.X[0:2, i]) - b1))*self.I[0] + self.slack[0,i] >= c1*self.I[0] - self.slack[0,i])
+            self.opti.subject_to(((mtimes(np.transpose(a2), self.X[0:2, i]) - b2))*self.I[1] + self.slack[1,i] >= c2*self.I[1] - self.slack[1,i])
+            self.opti.subject_to(((mtimes(np.transpose(a3), self.X[0:2, i]) - b3))*self.I[2] + self.slack[2,i] >= c3*self.I[2] - self.slack[2,i])
+
 
     def value_function(self):
         # get value from the objective function
-        stats = self.opti.stats()
-        value_func = stats["iterations"]["obj"]
-        return value_func
+        value_fun = self.opti.value(self.opti.f)
+        return value_fun
 
+    def init_obstacles(self, obstacles, animate):
+        # add + 1 to len obstacles
+        for i in range(1, len(obstacles)):
+            it = 0
+            slopes = []
+            intercepts = []
+            a_vectors = np.empty((2, len(obstacles[i]['vertices'])))
+
+            for j in range(0, len(obstacles[i]['vertices'])-1):
+                point_1 = obstacles[i]['vertices'][it]
+                point_2 = obstacles[i]['vertices'][it+1]
+                it += 1
+
+                x = [point_1[0], point_2[0]]
+                y = [point_1[1], point_2[1]]
+                slope, intercept, _, _, _ = linregress(x, y)
+
+                slopeX = x[1] - x[0]
+                slopeY = y[1] - y[0]
+                slopes = np.append(slopes, slope)
+
+                if abs(slope) < 1:
+                    slope_norm = np.array([slopeX, slopeY], dtype=float).reshape(2, 1)
+                    slope_norm_sum = np.sqrt(np.sum(slope_norm ** 2))
+                    slope_norm[0] = slope_norm[0]  / slope_norm_sum
+                    slope_norm[1] = slope_norm[1]  / slope_norm_sum
+                    intercept = intercept*-1
+                    if (slopeX < 0 and slopeY < 0) or (slopeY < 0 and slopeX > 0):
+                        rot = np.array([[0, -1], [1, 0]])
+                        a = np.dot(rot, slope_norm)
+                        a_vectors[:, j] = a.reshape(1, 2)
+                    elif (slopeX > 0 and slopeY > 0) or (slopeY > 0 and slopeX < 0):
+                        rot = np.array([[0, 1], [-1, 0]])
+                        a = np.dot(rot, slope_norm)
+                        a_vectors[:, j] = a.reshape(1, 2)
+                else:
+                    slope_norm = np.array([slopeX, slopeY], dtype=float).reshape(2, 1)
+
+                    if (slopeX < 0 and slopeY < 0) or (slopeY > 0 and slopeX < 0):
+                        rot = np.array([[0, 1], [-1, 0]])
+                        a = np.dot(rot, slope_norm)
+                        a_vectors[:, j] = a.reshape(1, 2)
+                    elif (slopeX > 0 and slopeY > 0) or (slopeY < 0 and slopeX > 0):
+                        rot = np.array([[0, -1], [1, 0]])
+                        a = np.dot(rot, slope_norm)
+                        a_vectors[:, j] = a.reshape(1, 2)
+
+                intercepts = np.append(intercepts, intercept)
+
+                if it == len(obstacles[i]['vertices'])-1:
+                    point_1 = obstacles[i]['vertices'][-1]
+                    point_2 = obstacles[i]['vertices'][0]
+
+                    x = [point_1[0], point_2[0]]
+                    y = [point_1[1], point_2[1]]
+                    slope, intercept, _, _, _ = linregress(x, y)
+
+                    slopeX = x[1] - x[0]
+                    slopeY = y[1] - y[0]
+                    slopes = np.append(slopes, slope)
+
+                    if abs(slope) < 1:
+                        slope_norm = np.array([slopeX, slopeY], dtype=float).reshape(2, 1)
+                        slope_norm_sum = np.sqrt(np.sum(slope_norm ** 2))
+                        slope_norm[0] = slope_norm[0] / slope_norm_sum
+                        slope_norm[1] = slope_norm[1] / slope_norm_sum
+                        intercept = intercept * -1
+                        if (slopeX < 0 and slopeY < 0) or (slopeY < 0 and slopeX > 0):
+                            rot = np.array([[0, -1], [1, 0]])
+                            a = np.dot(rot, slope_norm)
+                            a_vectors[:, -1] = a.reshape(1, 2)
+                        elif (slopeX > 0 and slopeY > 0) or (slopeY > 0 and slopeX < 0):
+                            rot = np.array([[0, 1], [-1, 0]])
+                            a = np.dot(rot, slope_norm)
+                            a_vectors[:, -1] = a.reshape(1, 2)
+                    else:
+                        slope_norm = np.array([slopeX, slopeY], dtype=float).reshape(2, 1)
+                        if (slopeX < 0 and slopeY < 0) or (slopeY < 0 and slopeX > 0):
+                            rot = np.array([[0, -1], [1, 0]])
+                            a = np.dot(rot, slope_norm)
+                            a_vectors[:, -1] = a.reshape(1, 2)
+                        elif (slopeX > 0 and slopeY > 0) or (slopeY > 0 and slopeX < 0):
+                            rot = np.array([[0, 1], [-1, 0]])
+                            a = np.dot(rot, slope_norm)
+                            a_vectors[:, -1] = a.reshape(1, 2)
+
+                    intercepts = np.append(intercepts, intercept)
+
+            obstacles[i]['a'] = a_vectors
+            obstacles[i]['slopes'] = slopes
+            obstacles[i]['intercepts'] = intercepts
+        self.obs = obstacles
+
+        if animate:
+            self.x_list = []
+            self.y_list = []
+            self.z_list = []
+            for i in range(1, len(obstacles)+1):
+                x_ani = []
+                y_ani = []
+                z_ani = []
+                vertices = self.obs[i]['vertices']
+                for j in range(0, len(vertices)):
+                    x_ani.append(vertices[j][0])
+                    y_ani.append(vertices[j][1])
+                    z_ani.append(0.1)
+
+                self.x_list.append(x_ani)
+                self.y_list.append(y_ani)
+                self.z_list.append(z_ani)
 
     def animate(self, curr_pos):
         plt.cla()
         plt.xlim(0, 10)
         plt.ylim(0, 10)
         self.ax.set_zlim(0, 10)
+        # graph robot as a round sphere for simplicity
         self.ax.plot_surface(self.x_fig + curr_pos[0], self.y_fig + curr_pos[1], self.z_fig,
                              rstride=4, cstride=4, color='b')
         x_togo = 2 * np.cos(curr_pos[2])
         y_togo = 2 * np.sin(curr_pos[2])
 
+        # graph direction of the robot heading
         self.ax.quiver(curr_pos[0], curr_pos[1], 0, x_togo, y_togo, 0, color='red', alpha=.8, lw=3)
+
+        # graph obstacles
+        for i in range(0, len(self.x_list)):
+            verts = [list(zip(self.x_list[i], self.y_list[i], self.z_list[i]))]
+            self.ax.add_collection3d(Poly3DCollection(verts))
+
+        #self.abline(self.slope_line, self.intercept)
+
+        plt.show()
         plt.pause(0.001)
 
+    def abline(self, slope, intercept):
+        """Plot a line from slope and intercept"""
+        axes = plt.gca()
+        x_vals = np.array(axes.get_xlim())
+        y_vals = intercept + slope * x_vals
 
+        plt.plot(x_vals, y_vals, '--')
+
+        return x_vals, y_vals
 
 if __name__ == '__main__':
+
     # initialize all required variables for the SMPC solver
     dT = 0.1
-    mpc_horizon = 10
-    curr_pos = np.array([0,0,0]).reshape(3,1)
-    goal_pos = np.array([10,10,0]).reshape(3,1)
+    mpc_horizon = 5
+    curr_pos = np.array([0,10,0]).reshape(3,1)
+    goal_pos = np.array([10,0, 0]).reshape(3,1)
     robot_size = 0.5
     max_nObstacles = 2
     field_of_view = {'max_distance': 10.0, 'angle_range': [45, 135]}
     lb_state = np.array([[-20], [-20], [-pi]], dtype=float)
     ub_state = np.array([[20], [20], [pi]], dtype=float)
-    lb_control = np.array([[-0.5], [-0.5], [-np.pi/6]], dtype=float)
-    ub_control = np.array([[0.5], [0.5], [np.pi/6]], dtype=float)
+    lb_control = np.array([[-1.5], [-1.5], [-np.pi/2]], dtype=float)
+    ub_control = np.array([[1.5], [1.5], [np.pi/2]], dtype=float)
 
-
-    Q = np.array([[1, 0, 0], [0, 1, 0], [0, 0, 0.1]])
-    R = np.array([[0.5, 0, 0], [0, 0.5, 0], [0, 0, 0.0005]])
-    angle_noise_r1 = 0.1
+    Q = np.array([[1, 0, 0], [0, 1, 0], [0, 0, 1]])
+    R = np.array([[0.5, 0, 0], [0, 0.5, 0], [0, 0, 0.00000001]])
+    angle_noise_r1 = 0.0
     angle_noise_r2 = 0.0
-    relative_measurement_noise_cov = np.array([[0.1,0], [0,0.1]])
-    maxComm_distance = 0
+    relative_measurement_noise_cov = np.array([[0.0,0], [0,0.0]])
+    maxComm_distance = -10
     animate = True
+    # initialize obstacles to be seen
+    obs = {1: {'vertices': [[5, 5], [6, 7], [7, 5.2]], 'a': [], 'slopes': [], 'intercepts': [], 'risk': 0.1}}
+    obs.update(
+        {2: {'vertices': [[5, 5], [6, 7], [7, 5.2]], 'a': [], 'slopes': [], 'intercepts': [], 'risk': 0.1}})
 
     SMPC = SMPC_UGV_Planner(dT, mpc_horizon, curr_pos, goal_pos, robot_size, max_nObstacles, field_of_view, lb_state,
                             ub_state, lb_control, ub_control, Q, R, angle_noise_r1, angle_noise_r2,
-                            relative_measurement_noise_cov, maxComm_distance, animate)
+                            relative_measurement_noise_cov, maxComm_distance, obs, animate)
 
 
     while m.sqrt((curr_pos[0] - goal_pos[0]) ** 2 + (curr_pos[1] - goal_pos[1]) ** 2) > .1:
@@ -475,143 +645,3 @@ if __name__ == '__main__':
 
 
 
-
-
-
-
-
-
-
-
-
-"""
-        # inputs are the position of robot 1, robot 2, and their corresponding system noise covariance matrix provided
-        # by the RNN
-
-        # the output will be the updated state and also the updated system noise covariance matrix
-
-        # check if this is the first time both robots are making contact, and if they are within distance
-        if self.first_contact and np.linalg.norm(x_r1[0:2] - x_r2[0:2]) < self.maxComm_distance:
-
-            # calculate the measured state before update for both robots
-            # TODO use the correct x_hat for both robots
-            x_hat_r1 = 0
-            x_hat_r2 = 0
-
-            # calculate the relative positions of the two contacting robots
-            z = x_r1 - x_r2
-
-            # the system_noise_covariance will be a flattened 1x4 array, provided by the output of an RNN. We need to
-            # convert it into a 3x3 matrix. We will assume a constant noise in theta however.
-            #TODO Check to see if we need to include the off-diagonal values of the system noise covariance
-
-            system_noise_cov_converted_r1 = np.array([[system_noise_cov_r1[0], 0, 0], [0, system_noise_cov_r1[3], 0],
-            [0, 0, self.angle_noise_r1]])
-
-            system_noise_cov_converted_r2 = np.array([[system_noise_cov_r2[0], 0, 0], [0, system_noise_cov_r2[3], 0],
-            [0, 0, self.angle_noise_r2]])
-
-            P11 = system_noise_cov_converted_r1
-            P22 = system_noise_cov_converted_r2
-
-            # placeholder R12 (relative measurement noise between robot 1 and 2)
-            R12 = np.zeros(3,3)             #TODO: Add the correct R12 matrix here
-
-            # calculate the S matrix
-            S = P11 + P22 + R12
-
-            # calculate the inverse S matrix, if not possible, assume zeros
-            try:
-                S_inv = np.linalg.inv(S)
-
-            except ValueError:
-                S_inv = np.zeros(3, 3)
-
-            # update the cross-diagonal matrix
-            self.P12 = mtimes(mtimes(P11 * S_inv) * P22)
-
-            # calculate the kalman gain
-            K = mtimes(P11, S_inv)
-
-            # calculate the updated state for the ugv
-            x_hat_r1 = x_hat_r1 + mtimes(K, z - (x_hat_r1 - x_hat_r2))
-
-            # calculate the updated system noise covariance for the ugv
-            P11 = P11 - mtimes(mtimes(P11, S_inv), P11)
-
-            # ensure this function is only run at first contact
-            self.first_contact = False
-
-            return x_hat_r1, P11
-
-        # the second update and beyond, the following equations are used if both robots are within contact
-        elif (not self.first_contact) and np.linalg.norm(x_r1[0:2] - x_r2[0:2]) < self.maxComm_distance:
-
-            # calculate the measured state before update for both robots
-            # TODO use the correct x_hat for both robots
-            x_hat_r1 = 0
-            x_hat_r2 = 0
-
-            # calculate the relative positions of the two contacting robots
-            z = x_r1 - x_r2
-
-            # the system_noise_covariance will be a flattened 1x4 array, provided by the output of an RNN. We need to
-            # convert it into a 3x3 matrix. We will assume a constant noise in theta however.
-            # TODO Check to see if we need to include the off-diagonal values of the system noise covariance
-
-            system_noise_cov_converted_r1 = np.array([[system_noise_cov_r1[0], 0, 0], [0, system_noise_cov_r1[3], 0],
-            [0, 0, self.angle_noise_r1]])
-
-            system_noise_cov_converted_r2 = np.array([[system_noise_cov_r2[0], 0, 0], [0, system_noise_cov_r2[3], 0],
-            [0, 0, self.angle_noise_r2]])
-
-            P11_before_upd = system_noise_cov_converted_r1
-            P22_before_upd = system_noise_cov_converted_r2
-
-            # placeholder R12 (relative measurement noise between robot 1 and 2)
-            R12 = np.zeros(3,3)             #TODO: Add the correct R12 matrix here
-
-            # calculate the S matrix
-            S = P11_before_upd - self.P12 - np.transpose(self.P12) + P22_before_upd + R12
-
-            # calculate the inverse S matrix, if not possible, assume zeros
-            try:
-                S_inv = np.linalg.inv(S)
-
-            except ValueError:
-                S_inv = np.zeros(3, 3)
-
-            # calculate the kalman gain
-            K = mtimes((P11_before_upd - self.P12), S_inv)
-
-            # calculate the updated state for the ugv
-            x_hat_r1 = x_hat_r1 + mtimes(K, z - (x_hat_r1 - x_hat_r2))
-
-
-            # calculate the updated system noise covariance for the ugv
-            P11 = P11_before_upd - mtimes(mtimes((P11_before_upd - self.P12), S_inv), (P11_before_upd - self.P12))
-
-            # update the cross-diagonal matrix
-            # TODO double check the bottom and top equations, could be incorrect
-            self.P12 = self.P12 - mtimes(mtimes((P11_before_upd - self.P12), S_inv), (self.P12 - P22_before_upd))
-
-            return x_hat_r1, P11
-
-        # if the robots are not in contact range, then no cooperative localization calculations can be done
-        else:
-            # calculate the measured state before update for both robots
-            x_hat_r1 = x_r1 + numpy.random.multivariate_normal(0, self.measurement_noise_cov_r1, check_valid='warn')
-
-            # the system_noise_covariance will be a flattened 1x4 array, provided by the output of an RNN. We need to
-            # convert it into a 3x3 matrix. We will assume a constant noise in theta however.
-            # TODO Check to see if we need to include the off-diagonal values of the system noise covariance
-            system_noise_cov_converted_r1 = np.array([[system_noise_cov_r1[0], 0, 0], [0, system_noise_cov_r1[3], 0],
-                                                      [0, 0, self.angle_noise_r1]])
-            P11 = system_noise_cov_converted_r1
-
-
-            return x_hat_r1, P11
-
-    def obj(self):
-        pass
-"""
