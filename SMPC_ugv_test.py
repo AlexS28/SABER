@@ -14,12 +14,10 @@ import matplotlib.pyplot as plt
 import math as m
 import control
 from scipy.stats import linregress
-from sklearn import preprocessing
-from scipy import special
 
 class SMPC_UGV_Planner():
 
-    def __init__(self, dT, mpc_horizon, curr_pos, goal_pos, goal_ctrl, robot_size, lb_state,
+    def __init__(self, dT, mpc_horizon, curr_pos, goal_pos, robot_size, lb_state,
                  ub_state, lb_control, ub_control, Q, R, angle_noise_r1, angle_noise_r2,
                  relative_measurement_noise_cov, maxComm_distance, obs, animate):
 
@@ -42,13 +40,13 @@ class SMPC_UGV_Planner():
         # represent the cost on linear and angular velocity, the next 2 diagonals represent cost on state slack,
         # and terminal slack respectively. The P diagonal matrix represents the cost on the terminal constraint.
         self.Q = Q
-        self.R = R
+        self.R_init = R
         # initialize discretized state matrices A and B (note, A is constant, but B will change as it is a function of
         # state theta)
         self.A = np.array([[1, 0, 0], [0, 1, 0], [0, 0, 1]])
         self.B = np.array([[self.dT, 0, 0], [0, self.dT, 0], [0, 0, self.dT]])
         # initialize the P matrix, which is the cost matrix that defines the optimal state feedback controller
-        _, self.P, _ = control.lqr(self.A, self.B, self.Q, self.R)
+        _, self.P_init, _ = control.lqr(self.A, self.B, self.Q, self.R_init)
         # initialize measurement noise (in our calculation, measurement noise is set by the user and is gaussian,
         # zero-mean). It largely represents the noise due to communication transmitters, or other sensor devices. It
         # is assumed to be a 3x3 matrix (x, y, and theta) for both robots
@@ -59,14 +57,14 @@ class SMPC_UGV_Planner():
         self.angle_noise_r2 = angle_noise_r2
         # initialize the maximum distance that robot 1 and 2 are allowed to have for cross communication
         self.maxComm_distance = maxComm_distance
+        # distance to obstacle to be used as constraints
+        self.max_obs_distance = 2
         # initialize obstacles
         self.obs = obs
         # initialize robot's current position
         self.curr_pos = curr_pos
         # initialize robot's goal position
         self.goal_pos = goal_pos
-        # initialize robot's goal control values
-        self.goal_ctrl = goal_ctrl
         # self.change_goal_point(goal_pos)
         # initialize the current positional uncertainty (and add the robot size to it)
         # TODO: this is a temporary fix for testing
@@ -111,16 +109,19 @@ class SMPC_UGV_Planner():
         self.r1_pos = self.opti.parameter(3, 1)
         self.opti.set_value(self.r1_pos, self.curr_pos)
 
-        # initialize the slack variables, one for the chance constraints, and the second rotation
+        # TODO: Still need to decide how to implement the slack variable at the terminal constraint
+        # initialize the slack variables for the terminal constraints
         self.slack = self.opti.variable(1, self.N + 1)
+
+        # initialize the R cost matrix, x and y (this may be used to change behavior of robot movement)
+        self.R = self.opti.parameter(3, 3)
+        self.opti.set_value(self.R, self.R_init)
+        self.P = self.opti.parameter(3, 3)
+        self.opti.set_value(self.P, self.P_init)
 
         # initialize the goal robot pos (x, y, and th goal position)
         self.r1_goal_pos = self.opti.parameter(3, 1)
         self.opti.set_value(self.r1_goal_pos, self.goal_pos)
-
-        # initialize the goal robot ctrl (vx, vy, and w goal ctrl)
-        self.r1_goal_ctrl = self.opti.parameter(3, 1)
-        self.opti.set_value(self.r1_goal_ctrl, self.goal_ctrl)
 
         # initialize the angle noise for robot 1
         self.angle_noise = self.opti.parameter(1, 1)
@@ -147,16 +148,15 @@ class SMPC_UGV_Planner():
 
         self.objFunc = 0
 
-
         for k in range(0, self.N-1):
             con = self.U[:, k]
             st = self.X[:, k + 1]
 
-            self.objFunc = self.objFunc + mtimes(mtimes((st - self.r1_goal_pos).T, self.Q), st - self.r1_goal_pos) + \
+            self.objFunc = self.objFunc + 10*mtimes(mtimes((st - self.r1_goal_pos).T, self.Q), st - self.r1_goal_pos) + \
                            mtimes(mtimes(con.T, self.R), con)
 
         st = self.X[:, self.N]
-        self.objFunc = self.objFunc + mtimes(mtimes((st - self.r1_goal_pos).T, self.P), st - self.r1_goal_pos)
+        self.objFunc = self.objFunc + 10*mtimes(mtimes((st - self.r1_goal_pos).T, self.P), st - self.r1_goal_pos)
 
         # initialize the constraints for the objective function
         self.init_constraints()
@@ -180,7 +180,7 @@ class SMPC_UGV_Planner():
         # initialize obstacles, animate them, and also constrain them for the MPC
         self.init_obstacles(self.obs, animate)
 
-        # initialize rotation constraints (so robot always faces the direction of its path)
+        # add rotational constraints
         self.rotation_constraints()
 
         # initialize the objective function into the solver
@@ -248,7 +248,7 @@ class SMPC_UGV_Planner():
                 self.y_list.append(y_ani)
                 self.z_list.append(z_ani)
 
-        # initialize chance constraints
+        # initialize chance constraints for obstacle avoidance
         self.chance_constraints()
 
     def chance_constraints(self):
@@ -266,6 +266,10 @@ class SMPC_UGV_Planner():
         # initialize c parameter for chance constraint equation, this value will change for each time step
         self.c = self.opti.parameter(sum(self.obs_index), 1)
         self.opti.set_value(self.c, 1)
+
+        # initialize a switch variable, to turn off or on obstacle constraints if the obstacle is not in a desired range
+        self.switch_obs = self.opti.parameter(len(self.obs_index), 1)
+        self.opti.set_value(self.switch_obs, 0)
 
         # initialize integer constraints
         iter_2 = 0
@@ -290,14 +294,28 @@ class SMPC_UGV_Planner():
                 b = self.obs[i + 1]['intercepts'][index_slope_intercept]
                 m = self.obs[i + 1]['slopes'][index_slope_intercept]
                 self.opti.set_value(self.c[j], np.sqrt(np.dot(np.dot(2 * np.transpose(a), self.r1_cov_curr), a)) * erfinv((1 - 2 * r)))
-                #self.opti.set_value(self.c[j], 0.5)
-                index_slope_intercept = index_slope_intercept + 1
+                index_slope_intercept += 1
 
                 for k in range(0, self.N+1):
                     dist = self.distance_pt_line(m, a, b, self.X[0:2,k])
-                    self.opti.subject_to(dist * self.I[j]  >= self.c[j] * self.I[j])
+                    self.opti.subject_to(self.switch_obs[i]*dist * self.I[j] >= self.c[j] * self.I[j] * self.switch_obs[i])
 
+    def check_obstacles(self, curr_pos):
 
+        for i in range(0, len(self.obs_index)):
+            index_slope_intercept = 0
+            for j in range(0, self.obs_index[i]):
+                b = self.obs[i + 1]['intercepts'][index_slope_intercept]
+                m = self.obs[i + 1]['slopes'][index_slope_intercept]
+                index_slope_intercept += 1
+                dist = self.distance_pt_line_check(m, b, curr_pos)
+                print(dist)
+                if dist <= self.max_obs_distance:
+                    self.opti.set_value(self.switch_obs[i], 1)
+                    break
+                else:
+                    self.opti.set_value(self.switch_obs[i], 0)
+                    break
 
     def rotation_constraints(self):
 
@@ -312,8 +330,10 @@ class SMPC_UGV_Planner():
             rhsy = (-sin(self.X[2, k]) * (self.U[0, k]) + cos(self.X[2, k]) * (self.U[1, k]))
             gRoty = vertcat(gRoty, rhsy)
 
+
         self.opti.subject_to(self.opti.bounded(-1.8, gRotx, 1.8))
-        self.opti.subject_to(self.opti.bounded(-0.1, gRoty, 0.1))
+        self.opti.subject_to(self.opti.bounded(0, gRoty, 0))
+
 
     def pre_solve(self):
         # initiate the solver called bonmin - performs Mixed-Integer Nonlinear Programming (MINLP)
@@ -324,7 +344,8 @@ class SMPC_UGV_Planner():
         OT_Boolvector_Int = [1] * self.I.size()[0] * self.I.size()[1]
         OT_Boolvector = OT_Boolvector_X + OT_Boolvector_U + OT_Boolvector_Int
 
-        opts = {'bonmin.warm_start': 'interior_point', 'discrete': OT_Boolvector, 'error_on_fail': True}
+        opts = {'bonmin.warm_start': 'interior_point', 'discrete': OT_Boolvector, 'error_on_fail': True, 'bonmin.time_limit': 1.0,
+                'bonmin.acceptable_obj_change_tol': 1e40, 'bonmin.acceptable_tol': 1e-1}
 
         # create the solver
         self.opti.solver('bonmin', opts)
@@ -517,6 +538,7 @@ class SMPC_UGV_Planner():
 
         return xHat_next_r1_update
 
+
     def distance_pt_line(self, slope, a, intercept, point):
         A = -slope
         B = 1
@@ -529,6 +551,13 @@ class SMPC_UGV_Planner():
         dist = if_else(logic_and(sign(y - point[1]) == sign(a[1]), sign(x - point[0]) == sign(a[0])), -1*d, d)
 
         return dist
+
+    def distance_pt_line_check(self, slope, intercept, point):
+        A = -slope
+        B = 1
+        C = -intercept
+        d = np.abs(A*point[0] + B*point[1] + C) / np.sqrt(A**2 + B**2)
+        return d
 
     def animate(self, curr_pos):
         plt.cla()
@@ -558,46 +587,67 @@ if __name__ == '__main__':
     # initialize all required variables for the SMPC solver
     dT = 0.1
     mpc_horizon = 5
-    curr_pos = np.array([0, 4, 0]).reshape(3,1)
-    goal_pos = np.array([10, 5, 0]).reshape(3,1)
-    goal_ctrl = np.array([1.5, 1.5, 0]).reshape(3, 1)
+    curr_pos = np.array([0, 0, pi/2]).reshape(3,1)
+    goal_pos = np.array([10, 5, pi/2]).reshape(3,1)
+
     robot_size = 0.5
     lb_state = np.array([[-20], [-20], [-2*pi]], dtype=float)
     ub_state = np.array([[20], [20], [2*pi]], dtype=float)
     lb_control = np.array([[-1.5], [-1.5], [-np.pi/2]], dtype=float)
     ub_control = np.array([[1.5], [1.5], [np.pi/2]], dtype=float)
-    Q = np.array([[1, 0, 0], [0, 1, 0], [0, 0, 1]])
-    R = np.array([[10, 0, 0], [0, 1, 0], [0, 0, 0.001]])
+    Q = np.array([[1, 0, 0], [0, 1, 0], [0, 0, 0]])
+    R_init = np.array([[1, 0, 0], [0, 1, 0], [0, 0, 0.001]])
     angle_noise_r1 = 0.0
     angle_noise_r2 = 0.0
     relative_measurement_noise_cov = np.array([[0.0,0], [0,0.0]])
     maxComm_distance = -10
     animate = True
+    failure_count = 0
+
 
     # initialize obstacles to be seen
     obs = {1: {'vertices': [[3.9, 4], [4, 6], [6, 6.1], [5.9, 4.1]], 'a': [], 'slopes': [], 'intercepts': [], 'polygon_type': 4, 'risk': 0.1}}
     #obs = {1: {'vertices': [[5.9, 4.1], [3.9, 4]], 'a': [], 'slopes': [], 'intercepts': [],
     #           'polygon_type': 1, 'risk': 0.1}}
     obs.update(
-        {2: {'vertices': [[6, 5], [7, 7], [8, 5.2]], 'a': [], 'slopes': [], 'intercepts': [], 'polygon_type': 3, 'risk': 0.1}})
+        {2: {'vertices': [[6, 5], [7, 7], [8, 5.2]], 'a': [], 'slopes': [], 'intercepts': [], 'polygon_type': 3, 'risk': 0.4}})
 
 
 
-    SMPC = SMPC_UGV_Planner(dT, mpc_horizon, curr_pos, goal_pos, goal_ctrl, robot_size, lb_state,
-                            ub_state, lb_control, ub_control, Q, R, angle_noise_r1, angle_noise_r2,
+    SMPC = SMPC_UGV_Planner(dT, mpc_horizon, curr_pos, goal_pos, robot_size, lb_state,
+                            ub_state, lb_control, ub_control, Q, R_init, angle_noise_r1, angle_noise_r2,
                             relative_measurement_noise_cov, maxComm_distance, obs, animate)
 
 
-    while m.sqrt((curr_pos[0] - goal_pos[0]) ** 2 + (curr_pos[1] - goal_pos[1]) ** 2) > 0.1:
+    while m.sqrt((curr_pos[0] - goal_pos[0]) ** 2 + (curr_pos[1] - goal_pos[1]) ** 2) > 0.5:
 
         try:
             sol = SMPC.opti.solve()
             x = sol.value(SMPC.X)[:, 1]
+            u = sol.value(SMPC.U[:, SMPC.N-1])
+            xn = sol.value(SMPC.X)[:, SMPC.N]
+            th_rad = abs(atan2(xn[1] - goal_pos[1], xn[0] - goal_pos[0]))
+
+            if ((th_rad >= 0 and th_rad < pi/3) or (th_rad <= pi and th_rad > 2*pi/3)) and np.sqrt(u[0]**2 + u[1]**2) < 1.0:
+                SMPC.opti.set_value(SMPC.R[0,0], 10)
+                SMPC.opti.set_value(SMPC.R[1,1], 1)
+                _, P_init, _ = control.lqr(SMPC.A, SMPC.B, SMPC.Q, SMPC.opti.value(SMPC.R))
+                SMPC.opti.set_value(SMPC.P, P_init)
+            elif (th_rad < 3*pi/4 and th_rad > pi/4) and np.sqrt(u[0]**2 + u[1]**2) < 1.0:
+                SMPC.opti.set_value(SMPC.R[0, 0], 1)
+                SMPC.opti.set_value(SMPC.R[1, 1], 10)
+                _, P_init, _ = control.lqr(SMPC.A, SMPC.B, SMPC.Q, SMPC.opti.value(SMPC.R))
+                SMPC.opti.set_value(SMPC.P, P_init)
+
+            SMPC.check_obstacles(x[0:2])
+            print(SMPC.opti.value(SMPC.R))
+
         except:
+            failure_count += 1
             u = sol.value(SMPC.U[:, 0])
+            u[2] = 0
             x = SMPC.next_state_nominal(curr_pos, u)
             print('WARNING: Solver has failed, using previous control value for next input')
-
 
         curr_pos = np.array(x).reshape(3, 1)
         SMPC.opti.set_value(SMPC.r1_pos, x)

@@ -1,17 +1,17 @@
 """FILE CREATED BY: Alexander Schperberg, aschperb@gmail.com
 Copyright by RoMeLa (Robotics and Mechanisms Laboratory, University of California, Los Angeles)"""
 
-# This file provides a simple model predictive controller for a unmanned ground vehicle for data collection
-# purposes that moves a ground vehicle to several user-specified goal locations
+# This file provides a simple model predictive controller for a unmanned aerial vehicle for data collection
+# purposes that moves a aerial to several user-specified goal locations
 
 from casadi import *
 import numpy as np
 from mpl_toolkits.mplot3d import Axes3D
-from mpl_toolkits.mplot3d.art3d import Poly3DCollection
 import matplotlib.pyplot as plt
 import math as m
+import control
 
-class MPC_UGV_Planner():
+class MPC_UAV_Planner():
 
     def __init__(self, dT, mpc_horizon, curr_pos, lb_state,
                  ub_state, lb_control, ub_control, Q, R, robot_size, animate):
@@ -37,8 +37,34 @@ class MPC_UGV_Planner():
         self.Q = Q
         self.R = R
         # initialize discretized state matrices A and B
-        self.A = np.array([[1, 0, 0], [0, 1, 0], [0, 0, 1]])
-        self.B = np.array([[self.dT, 0, 0], [0, self.dT, 0], [0, 0, self.dT]])
+        A1 = 0.7969
+        A2 = 0.02247
+        A3 = -1.7976
+        A4 = 0.9767
+        B1 = 0.01166
+        B2 = 0.9921
+        g = 9.81
+        KT = 0.91
+        m = 1.3
+
+        self.A = np.array([[1, self.dT, (g*self.dT**2)/2, 0, 0, 0, 0, 0, 0, 0],
+                          [0, 1, g*self.dT, 0, 0, 0, 0, 0, 0, 0],
+                          [0, 0, A1, A2, 0, 0, 0, 0, 0, 0],
+                          [0, 0, A3, A4, 0, 0, 0, 0, 0, 0],
+                           [0, 0, 0, 0, 1, self.dT, (g*self.dT**2)/2, 0, 0, 0],
+                           [0,0,0,0,0,1,g*self.dT,0,0,0],
+                           [0,0,0,0,0,0,A1,A2,0,0],
+                           [0,0,0,0,0,0,A3,A4,0,0],
+                           [0,0,0,0,0,0,0,0,1,self.dT],
+                           [0,0,0,0,0,0,0,0,0,1]])
+
+        self.B = np.array([[0,0,0], [0,0,0], [B1,0,0], [B2,0,0], [0,0,0],
+                           [0,0,0], [0,B1,0],[0,B2,0],[0,0,(-KT*self.dT**2)/(m*2)],
+                           [0,0,(-KT*self.dT)/m]])
+
+        # TODO: adding the C matrix does not work, potentially a problem with equations
+        #self.C = np.array([[0],[0],[0],[0],[0],[0],[0],[0],[0.0031], [0.2453]])
+
         # initialize robot's current position
         self.curr_pos = curr_pos
         self.initVariables()
@@ -59,25 +85,31 @@ class MPC_UGV_Planner():
     def initVariables(self):
 
         # initialize x, y, and theta state variables
-        self.X = self.opti.variable(3, self.N+1)
+        self.X = self.opti.variable(10, self.N+1)
         self.x_pos = self.X[0,:]
-        self.y_pos = self.X[1,:]
-        self.th = self.X[2, :]
-        self.opti.set_initial(self.X, 0)
+        self.x_vel = self.X[1,:]
+        self.th1 = self.X[2,:]
+        self.th1_vel = self.X[3,:]
+        self.y_pos = self.X[4,:]
+        self.y_vel = self.X[5,:]
+        self.th2 = self.X[6,:]
+        self.th2_vel = self.X[7,:]
+        self.z_pos = self.X[8,:]
+        self.z_vel = self.X[9,:]
+
 
         # initialize, linear and angular velocity control variables (v, and w), and repeat above procedure
         self.U = self.opti.variable(3, self.N)
-        self.vx = self.U[0, :]
-        self.vy = self.U[1, :]
-        self.w = self.U[2, :]
-        self.opti.set_initial(self.U, 0)
+        self.u1 = self.U[0, :]
+        self.u2 = self.U[1, :]
+        self.u3 = self.U[2, :]
 
-        # initialize the current robot pos (x, y and th current position)
-        self.r_pos = self.opti.parameter(3, 1)
+        # initialize the current robot pos
+        self.r_pos = self.opti.parameter(10, 1)
         self.opti.set_value(self.r_pos, self.curr_pos)
 
         # initialize the goal point (x, y and th current position)
-        self.r_goal = self.opti.parameter(3, 1)
+        self.r_goal = self.opti.parameter(10, 1)
 
         # initialize the objective function
         self.obj()
@@ -92,10 +124,10 @@ class MPC_UGV_Planner():
             self.objFunc = self.objFunc + mtimes(mtimes((st - self.r_goal).T, self.Q), st - self.r_goal) + \
                            mtimes(mtimes(con.T, self.R), con)
 
+        self.init_constraints()
+
         # initialize the objective function into the solver
         self.opti.minimize(self.objFunc)
-
-        self.init_constraints()
 
     def init_constraints(self):
         # constrain the current state, and bound current and future states by their limits
@@ -108,31 +140,11 @@ class MPC_UGV_Planner():
             next_state = self.next_state_nominal(self.X[:, k], self.U[:, k])
             self.opti.subject_to(self.X[:, k + 1] == next_state)
 
-        # add rotational constraints
-        self.rotation_constraints()
-
         # set solver
         self.pre_solve()
 
-    def rotation_constraints(self):
-
-        gRotx = []
-        gRoty = []
-
-        for k in range(0, self.N):
-            rhsx = (cos(self.X[2, k]) * (self.U[0, k]) + sin(self.X[2, k]) * (self.U[1, k]))
-            gRotx = vertcat(gRotx, rhsx)
-
-        for k in range(0, self.N):
-            rhsy = (-sin(self.X[2, k]) * (self.U[0, k]) + cos(self.X[2, k]) * (self.U[1, k]))
-            gRoty = vertcat(gRoty, rhsy)
-
-
-        self.opti.subject_to(self.opti.bounded(-1.8, gRotx, 1.8))
-        self.opti.subject_to(self.opti.bounded(0, gRoty, 0))
-
     def next_state_nominal(self, x, u):
-        next_state = mtimes(self.A, x) + mtimes(self.B, u)
+        next_state = mtimes(self.A, x) + mtimes(self.B, u) #+ self.C
         return next_state
 
     def pre_solve(self):
@@ -150,13 +162,13 @@ class MPC_UGV_Planner():
         plt.ylim(0, 10)
         self.ax.set_zlim(0, 10)
         # graph robot as a round sphere for simplicity
-        self.ax.plot_surface(self.x_fig + curr_pos[0], self.y_fig + curr_pos[1], self.z_fig,
+        self.ax.plot_surface(self.x_fig + curr_pos[0], self.y_fig + curr_pos[4], self.z_fig + curr_pos[8],
                              rstride=4, cstride=4, color='b')
-        x_togo = 2 * np.cos(curr_pos[2])
-        y_togo = 2 * np.sin(curr_pos[2])
+        #x_togo = 2 * np.cos(curr_pos[2])
+        #y_togo = 2 * np.sin(curr_pos[2])
 
         # graph direction of the robot heading
-        self.ax.quiver(curr_pos[0], curr_pos[1], 0, x_togo, y_togo, 0, color='red', alpha=.8, lw=3)
+        #self.ax.quiver(curr_pos[0], curr_pos[4], curr_pos[8], x_togo, y_togo, 0, color='red', alpha=.8, lw=3)
         plt.show()
         plt.pause(0.001)
 
@@ -165,33 +177,39 @@ if __name__ == '__main__':
     # initialize all required variables for the SMPC solver
     dT = 0.1
     mpc_horizon = 5
-    curr_pos = np.array([0, 0, 0]).reshape(3,1)
-    goal_points = [[10, 0, 0], [0, 0, 0], [10, 10, 0], [0, 0, 0]]
+    # x, vel_x, th1, th1_vel, y, vel_y, th2, th2_vel, z, z_vel
+    curr_pos = np.array([0,0,0,0,0,0,0,0,0,0]).reshape(10,1)
+    goal_pos = np.array([5,0,0,0,5,0,0,0,5,0]).reshape(10,1)
 
     robot_size = 0.5
-    lb_state = np.array([[-20], [-20], [-2*pi]], dtype=float)
-    ub_state = np.array([[20], [20], [2*pi]], dtype=float)
-    lb_control = np.array([[-2.5], [-2.5], [-np.pi/2]], dtype=float)
-    ub_control = np.array([[2.5], [2.5], [np.pi/2]], dtype=float)
-    Q = np.array([[1, 0, 0], [0, 1, 0], [0, 0, 0]])
-    R = np.array([[1, 0, 0], [0, 1, 0], [0, 0, 0.001]])
+    lb_state = np.array([[-20], [-5], [-10*(pi/180)], [-50*pi/180],[-20], [-5], [-10*(pi/180)], [-50*pi/180],[-20],[-5]], dtype=float)
+    ub_state = np.array([[20], [5], [10*(pi/180)], [50*pi/180],[20], [5], [10*(pi/180)], [50*pi/180],[20],[5]], dtype=float)
+    lb_control = np.array([[-10*pi/180], [-10*pi/180], [-10*pi/180]], dtype=float)
+    ub_control = np.array([[10*pi/180], [10*pi/180], [10*pi/180]], dtype=float)
+
+    Q = np.array([[1,0,0,0,0,0,0,0,0,0],
+                          [0,1,0,0,0,0,0,0,0,0],
+                          [0,0,1,0,0,0,0,0,0,0],
+                           [0,0,0,1,0,0,0,0,0,0],
+                           [0,0,0,0,1,0,0,0,0,0],
+                           [0,0,0,0,0,1,0,0,0,0],
+                           [0,0,0,0,0,0,1,0,0,0],
+                           [0,0,0,0,0,0,0,1,0,0],
+                           [0,0,0,0,0,0,0,0,1,0],
+                           [0,0,0,0,0,0,0,0,0,1]])
+
+    R = np.array([[.001, 0, 0], [0, .001, 0], [0, 0, 0.001]])
     animate = True
 
-    MPC = MPC_UGV_Planner(dT, mpc_horizon, curr_pos, lb_state,
+    MPC = MPC_UAV_Planner(dT, mpc_horizon, curr_pos, lb_state,
                             ub_state, lb_control, ub_control, Q, R, robot_size, animate)
 
-    for i in range(0, len(goal_points)):
+    MPC.opti.set_value(MPC.r_goal, goal_pos)
 
-        goal_pos = np.array(goal_points[i])
-        MPC.opti.set_value(MPC.r_goal, goal_pos)
-
-        while m.sqrt((curr_pos[0] - goal_pos[0]) ** 2 + (curr_pos[1] - goal_pos[1]) ** 2) > 0.5:
-
-            sol = MPC.opti.solve()
-            x = sol.value(MPC.X)[:, 1]
-
-            print(sol.value(MPC.U[:, 0]))
-
-            curr_pos = np.array(x).reshape(3, 1)
-            MPC.opti.set_value(MPC.r_pos, x)
-            MPC.animate(curr_pos)
+    while m.sqrt((curr_pos[0] - goal_pos[0]) ** 2 + (curr_pos[4] - goal_pos[4]) ** 2 + (curr_pos[8] - goal_pos[8])**2) > 0.001:
+        sol = MPC.opti.solve()
+        x = sol.value(MPC.X)[:, 1]
+        print(x)
+        curr_pos = np.array(x).reshape(10, 1)
+        MPC.opti.set_value(MPC.r_pos, x)
+        MPC.animate(curr_pos)
