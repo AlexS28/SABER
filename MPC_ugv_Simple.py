@@ -128,7 +128,7 @@ class MPC_UGV_Planner():
             gRoty = vertcat(gRoty, rhsy)
 
 
-        self.opti.subject_to(self.opti.bounded(-1.8, gRotx, 1.8))
+        self.opti.subject_to(self.opti.bounded(-2.5, gRotx, 2.5))
         self.opti.subject_to(self.opti.bounded(0, gRoty, 0))
 
     def next_state_nominal(self, x, u):
