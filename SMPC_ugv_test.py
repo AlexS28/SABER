@@ -587,7 +587,7 @@ if __name__ == '__main__':
     # initialize all required variables for the SMPC solver
     dT = 0.1
     mpc_horizon = 5
-    curr_pos = np.array([0, 0, pi/2]).reshape(3,1)
+    curr_pos = np.array([0, 5, pi/2]).reshape(3,1)
     goal_pos = np.array([10, 5, pi/2]).reshape(3,1)
 
     robot_size = 0.5

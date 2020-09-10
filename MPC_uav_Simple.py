@@ -179,7 +179,7 @@ if __name__ == '__main__':
     mpc_horizon = 5
     # x, vel_x, th1, th1_vel, y, vel_y, th2, th2_vel, z, z_vel
     curr_pos = np.array([0,0,0,0,0,0,0,0,0,0]).reshape(10,1)
-    goal_pos = np.array([5,0,0,0,5,0,0,0,5,0]).reshape(10,1)
+    goal_pos = np.array([8,0,0,0,8,0,0,0,8,0]).reshape(10,1)
 
     robot_size = 0.5
     lb_state = np.array([[-20], [-5], [-10*(pi/180)], [-50*pi/180],[-20], [-5], [-10*(pi/180)], [-50*pi/180],[-20],[-5]], dtype=float)
