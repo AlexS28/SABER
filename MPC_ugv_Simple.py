@@ -11,6 +11,9 @@ from mpl_toolkits.mplot3d.art3d import Poly3DCollection
 import matplotlib.pyplot as plt
 import math as m
 
+# ADDED
+from ROS_interface import *
+
 class MPC_UGV_Planner():
 
     def __init__(self, dT, mpc_horizon, curr_pos, lb_state,
@@ -180,17 +183,27 @@ if __name__ == '__main__':
     MPC = MPC_UGV_Planner(dT, mpc_horizon, curr_pos, lb_state,
                             ub_state, lb_control, ub_control, Q, R, robot_size, animate)
 
+    # ADDED
+    ROS = ROSInterface()
+    rospy.init_node('ros_interface')
+
     for i in range(0, len(goal_points)):
 
         goal_pos = np.array(goal_points[i])
         MPC.opti.set_value(MPC.r_goal, goal_pos)
 
-        while m.sqrt((curr_pos[0] - goal_pos[0]) ** 2 + (curr_pos[1] - goal_pos[1]) ** 2) > 0.5:
+        while m.sqrt((curr_pos[0] - goal_pos[0]) ** 2 + (curr_pos[1] - goal_pos[1]) ** 2) > 0.5 and not rospy.is_shutdown():
+
+            curr_pos = ROS.get_current_pose()
 
             sol = MPC.opti.solve()
             x = sol.value(MPC.X)[:, 1]
 
             print(sol.value(MPC.U[:, 0]))
+            
+            # ADDED
+            u_vec = sol.value(MPC.U[:, 0])
+            ROS.send_velocity(u_vec)
 
             curr_pos = np.array(x).reshape(3, 1)
             MPC.opti.set_value(MPC.r_pos, x)
