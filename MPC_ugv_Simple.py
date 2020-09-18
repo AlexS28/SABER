@@ -174,8 +174,8 @@ if __name__ == '__main__':
     robot_size = 0.5
     lb_state = np.array([[-20], [-20], [-2*pi]], dtype=float)
     ub_state = np.array([[20], [20], [2*pi]], dtype=float)
-    lb_control = np.array([[-1.0], [-1.0], [-np.pi/2]], dtype=float) # CHANGED
-    ub_control = np.array([[1.0], [1.0], [np.pi/2]], dtype=float) # CHANGED
+    lb_control = np.array([[-0.5], [-0.5], [-np.pi/10]], dtype=float) # CHANGED
+    ub_control = np.array([[0.5], [0.5], [np.pi/10]], dtype=float) # CHANGED
     Q = np.array([[1, 0, 0], [0, 1, 0], [0, 0, 0]])
     R = np.array([[1, 0, 0], [0, 1, 0], [0, 0, 0.001]])
     animate = True
@@ -203,8 +203,9 @@ if __name__ == '__main__':
             u_vec = sol.value(MPC.U[:, 0])
             ROS.send_velocity(u_vec)
 
-            curr_pos = np.array(x).reshape(3, 1)
+            # curr_pos = np.array(x).reshape(3, 1)
             curr_pos = ROS.get_current_pose()
             print(curr_pos)
+
             MPC.opti.set_value(MPC.r_pos, x)
             MPC.animate(curr_pos)

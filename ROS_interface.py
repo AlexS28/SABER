@@ -34,12 +34,10 @@ class ROSInterface:
         self.pub_vel.publish(new_msg)
 
     # Process pose measurement from Gazebo simulation or tracking system
-    # def receive_pose(self, msg):
-    #     self.current_pose = msg
     def receive_pose(self, msg):
         self.current_pose = msg
 
     # Convert pose to MPC state format
     def get_current_pose(self):
         euler_angles = euler_from_quaternion([self.current_pose.pose.pose.orientation.x, self.current_pose.pose.pose.orientation.y, self.current_pose.pose.pose.orientation.z, self.current_pose.pose.pose.orientation.w])
-        return [self.current_pose.pose.pose.position.x, self.current_pose.pose.pose.position.y, euler_angles[2]]
+        return [self.current_pose.pose.pose.position.x, self.current_pose.pose.pose.position.y, euler_angles[2]] # SIGN?
