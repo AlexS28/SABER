@@ -169,13 +169,13 @@ if __name__ == '__main__':
     dT = 0.1
     mpc_horizon = 5
     curr_pos = np.array([0, 0, 0]).reshape(3,1)
-    goal_points = [[10, 0, 0], [0, 0, 0], [10, 10, 0], [0, 0, 0]]
+    goal_points = [[2, 0, 0], [0, 0, 0], [3, 0, 0], [0, 0, 0]]
 
     robot_size = 0.5
     lb_state = np.array([[-20], [-20], [-2*pi]], dtype=float)
     ub_state = np.array([[20], [20], [2*pi]], dtype=float)
-    lb_control = np.array([[-2.5], [-2.5], [-np.pi/2]], dtype=float)
-    ub_control = np.array([[2.5], [2.5], [np.pi/2]], dtype=float)
+    lb_control = np.array([[-1.0], [-1.0], [-np.pi/2]], dtype=float) # CHANGED
+    ub_control = np.array([[1.0], [1.0], [np.pi/2]], dtype=float) # CHANGED
     Q = np.array([[1, 0, 0], [0, 1, 0], [0, 0, 0]])
     R = np.array([[1, 0, 0], [0, 1, 0], [0, 0, 0.001]])
     animate = True
@@ -194,8 +194,6 @@ if __name__ == '__main__':
 
         while m.sqrt((curr_pos[0] - goal_pos[0]) ** 2 + (curr_pos[1] - goal_pos[1]) ** 2) > 0.5 and not rospy.is_shutdown():
 
-            curr_pos = ROS.get_current_pose()
-
             sol = MPC.opti.solve()
             x = sol.value(MPC.X)[:, 1]
 
@@ -206,5 +204,7 @@ if __name__ == '__main__':
             ROS.send_velocity(u_vec)
 
             curr_pos = np.array(x).reshape(3, 1)
+            curr_pos = ROS.get_current_pose()
+            print(curr_pos)
             MPC.opti.set_value(MPC.r_pos, x)
             MPC.animate(curr_pos)
