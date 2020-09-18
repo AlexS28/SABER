@@ -169,13 +169,13 @@ if __name__ == '__main__':
     dT = 0.1
     mpc_horizon = 5
     curr_pos = np.array([0, 0, 0]).reshape(3,1)
-    goal_points = [[2, 0, 0], [0, 0, 0], [3, 0, 0], [0, 0, 0]]
+    goal_points = [[10, 10, 0]]
 
     robot_size = 0.5
     lb_state = np.array([[-20], [-20], [-2*pi]], dtype=float)
     ub_state = np.array([[20], [20], [2*pi]], dtype=float)
-    lb_control = np.array([[-0.5], [-0.5], [-np.pi/10]], dtype=float) # CHANGED
-    ub_control = np.array([[0.5], [0.5], [np.pi/10]], dtype=float) # CHANGED
+    lb_control = np.array([[-0.1], [-0.1], [-np.pi/10]], dtype=float) # CHANGED
+    ub_control = np.array([[0.1], [0.1], [np.pi/10]], dtype=float) # CHANGED
     Q = np.array([[1, 0, 0], [0, 1, 0], [0, 0, 0]])
     R = np.array([[1, 0, 0], [0, 1, 0], [0, 0, 0.001]])
     animate = True

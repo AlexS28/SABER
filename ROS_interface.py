@@ -16,8 +16,8 @@ class ROSInterface:
     def __init__(self):
         self.current_pose = Odometry()
         # TODO: Make them remappable
-        self.pub_vel = rospy.Publisher("/mobile_base/commands/velocity", Twist, queue_size=10) #/cmd/vel
-        self.sub_pose = rospy.Subscriber("/odom_robot", Odometry, self.receive_pose) # /pose_in
+        self.pub_vel = rospy.Publisher("/cmd_vel", Twist, queue_size=10) #/cmd/vel
+        self.sub_pose = rospy.Subscriber("/odom", Odometry, self.receive_pose) # /pose_in
 
     # Send MPC controls trough ROS to Gazebo simulation or real hardware
     def send_velocity(self, u_vec):
