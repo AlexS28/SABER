@@ -22,10 +22,9 @@ class ROSInterface:
     # Send MPC controls trough ROS to Gazebo simulation or real hardware
     def send_velocity(self, u_vec):
         new_msg = Twist()
-        # U from MPC solution
+        # U from MPC solution (Turtlebot3 can only handle 2 control values, x velocity, and angular velocity)
         new_msg.linear.x = u_vec[0]
-        new_msg.linear.y = u_vec[1]
-        new_msg.angular.z = u_vec[2]
+        new_msg.angular.z = u_vec[1]
         # Constant, not used in 2D case
         new_msg.linear.z = 0
         new_msg.angular.x = 0
@@ -40,4 +39,4 @@ class ROSInterface:
     # Convert pose to MPC state format
     def get_current_pose(self):
         euler_angles = euler_from_quaternion([self.current_pose.pose.pose.orientation.x, self.current_pose.pose.pose.orientation.y, self.current_pose.pose.pose.orientation.z, self.current_pose.pose.pose.orientation.w])
-        return [self.current_pose.pose.pose.position.x, self.current_pose.pose.pose.position.y, euler_angles[2]] # SIGN?
+        return [self.current_pose.pose.pose.position.x, self.current_pose.pose.pose.position.y, euler_angles[2]]

@@ -41,7 +41,6 @@ class MPC_UGV_Planner():
         self.R = R
         # initialize discretized state matrices A and B
         self.A = np.array([[1, 0, 0], [0, 1, 0], [0, 0, 1]])
-        self.B = np.array([[self.dT, 0, 0], [0, self.dT, 0], [0, 0, self.dT]])
         # initialize robot's current position
         self.curr_pos = curr_pos
         self.initVariables()
@@ -63,16 +62,10 @@ class MPC_UGV_Planner():
 
         # initialize x, y, and theta state variables
         self.X = self.opti.variable(3, self.N+1)
-        self.x_pos = self.X[0,:]
-        self.y_pos = self.X[1,:]
-        self.th = self.X[2, :]
         self.opti.set_initial(self.X, 0)
 
         # initialize, linear and angular velocity control variables (v, and w), and repeat above procedure
-        self.U = self.opti.variable(3, self.N)
-        self.vx = self.U[0, :]
-        self.vy = self.U[1, :]
-        self.w = self.U[2, :]
+        self.U = self.opti.variable(2, self.N)
         self.opti.set_initial(self.U, 0)
 
         # initialize the current robot pos (x, y and th current position)
@@ -93,7 +86,7 @@ class MPC_UGV_Planner():
             st = self.X[:, k + 1]
 
             self.objFunc = self.objFunc + mtimes(mtimes((st - self.r_goal).T, self.Q), st - self.r_goal) + \
-                           mtimes(mtimes(con.T, self.R), con)
+                           0.5*mtimes(mtimes(con.T, self.R), con)
 
         # initialize the objective function into the solver
         self.opti.minimize(self.objFunc)
@@ -111,31 +104,11 @@ class MPC_UGV_Planner():
             next_state = self.next_state_nominal(self.X[:, k], self.U[:, k])
             self.opti.subject_to(self.X[:, k + 1] == next_state)
 
-        # add rotational constraints
-        self.rotation_constraints()
-
         # set solver
         self.pre_solve()
 
-    def rotation_constraints(self):
-
-        gRotx = []
-        gRoty = []
-
-        for k in range(0, self.N):
-            rhsx = (cos(self.X[2, k]) * (self.U[0, k]) + sin(self.X[2, k]) * (self.U[1, k]))
-            gRotx = vertcat(gRotx, rhsx)
-
-        for k in range(0, self.N):
-            rhsy = (-sin(self.X[2, k]) * (self.U[0, k]) + cos(self.X[2, k]) * (self.U[1, k]))
-            gRoty = vertcat(gRoty, rhsy)
-
-
-        self.opti.subject_to(self.opti.bounded(-2.5, gRotx, 2.5))
-        self.opti.subject_to(self.opti.bounded(0, gRoty, 0))
-
     def next_state_nominal(self, x, u):
-        next_state = mtimes(self.A, x) + mtimes(self.B, u)
+        next_state = mtimes(self.A, x) + mtimes(self.dT,vertcat(u[0]*cos(x[2]), u[0]*sin(x[2]), u[1]))
         return next_state
 
     def pre_solve(self):
@@ -165,25 +138,24 @@ class MPC_UGV_Planner():
 
 if __name__ == '__main__':
 
-    # initialize all required variables for the SMPC solver
+    # initialize all required variables for the MPC solver
     dT = 0.1
     mpc_horizon = 5
     curr_pos = np.array([0, 0, 0]).reshape(3,1)
-    goal_points = [[10, 10, 0]]
+    goal_points = [[4, 4, 0]]
 
     robot_size = 0.5
     lb_state = np.array([[-20], [-20], [-2*pi]], dtype=float)
     ub_state = np.array([[20], [20], [2*pi]], dtype=float)
-    lb_control = np.array([[-0.1], [-0.1], [-np.pi/10]], dtype=float) # CHANGED
-    ub_control = np.array([[0.1], [0.1], [np.pi/10]], dtype=float) # CHANGED
-    Q = np.array([[1, 0, 0], [0, 1, 0], [0, 0, 0]])
-    R = np.array([[1, 0, 0], [0, 1, 0], [0, 0, 0.001]])
+    lb_control = np.array([[-0.2], [-1.82]], dtype=float) # CHANGED
+    ub_control = np.array([[0.2], [1.82]], dtype=float) # CHANGED
+    Q = np.array([[1, 0, 0], [0, 2, 0], [0, 0, 0.1]])
+    R = np.array([[0.5, 0], [0, 0.05]])
     animate = True
 
     MPC = MPC_UGV_Planner(dT, mpc_horizon, curr_pos, lb_state,
                             ub_state, lb_control, ub_control, Q, R, robot_size, animate)
 
-    # ADDED
     ROS = ROSInterface()
     rospy.init_node('ros_interface')
 
@@ -195,17 +167,8 @@ if __name__ == '__main__':
         while m.sqrt((curr_pos[0] - goal_pos[0]) ** 2 + (curr_pos[1] - goal_pos[1]) ** 2) > 0.5 and not rospy.is_shutdown():
 
             sol = MPC.opti.solve()
-            x = sol.value(MPC.X)[:, 1]
-
-            print(sol.value(MPC.U[:, 0]))
-            
-            # ADDED
             u_vec = sol.value(MPC.U[:, 0])
             ROS.send_velocity(u_vec)
-
-            # curr_pos = np.array(x).reshape(3, 1)
             curr_pos = ROS.get_current_pose()
-            print(curr_pos)
-
-            MPC.opti.set_value(MPC.r_pos, x)
+            MPC.opti.set_value(MPC.r_pos, curr_pos)
             MPC.animate(curr_pos)
