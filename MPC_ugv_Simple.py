@@ -10,8 +10,7 @@ from mpl_toolkits.mplot3d import Axes3D
 from mpl_toolkits.mplot3d.art3d import Poly3DCollection
 import matplotlib.pyplot as plt
 import math as m
-
-# ADDED
+import time
 from ROS_interface import *
 
 class MPC_UGV_Planner():
@@ -136,6 +135,7 @@ class MPC_UGV_Planner():
         plt.show()
         plt.pause(0.001)
 
+"""
 if __name__ == '__main__':
 
     # initialize all required variables for the MPC solver
@@ -172,3 +172,4 @@ if __name__ == '__main__':
             curr_pos = ROS.get_current_pose()
             MPC.opti.set_value(MPC.r_pos, curr_pos)
             MPC.animate(curr_pos)
+"""

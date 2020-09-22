@@ -1,0 +1,13 @@
+<?xml version = "1.0"?>
+
+<launch>
+	<include file="$(find gazebo_ros)/launch/empty_world.launch">
+    	<arg name="world_name" value="$(find sabr_pkg)/src/SABR/worlds/world1.world"/>
+  	</include>
+	<include file="$(find turtlebot3_slam)/launch/turtlebot3_slam.launch">
+	</include>
+	<node name="map_server" type="map_server" pkg="map_server" args="/home/alexander/catkin_SABR/src/sabr_pkg/src/SABR/maps/map1.yaml"/>
+	<node name="amcl" type="amcl" pkg="amcl">
+		<param name="update_min_d" type="double" value="0.1"/>
+	</node>
+</launch>

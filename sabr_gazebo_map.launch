@@ -1,0 +1,9 @@
+<?xml version = "1.0"?>
+
+<launch>
+	<include file="$(find gazebo_ros)/launch/empty_world.launch">
+    	<arg name="world_name" value="$(find sabr_pkg)/src/SABR/worlds/world1.world"/>
+  	</include>
+	<include file="$(find turtlebot3_slam)/launch/turtlebot3_slam.launch">
+	</include>
+</launch>
