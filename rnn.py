@@ -1,5 +1,5 @@
 from __future__ import absolute_import, division, print_function, unicode_literals
-
+#import csv
 import numpy as np
 import matplotlib.pyplot as plt
 import pandas as pd
@@ -18,17 +18,67 @@ output_scaler = MinMaxScaler(feature_range = (0.01, 0.99))
 ###################################
 #CREATE INPUTS AND OUTPUTS FROM DATA
 ###################################
+
+# number of datasets
+num_datasets = 1
+num_dataToUse = 2340
+num_timesteps = 50
+
+# indicate whether dataset is from lidar scans or rgbd, default is lidar
+lidar = True
+if lidar:
+    num_features = 360
+else:
+    num_features = 10
+
+train_inputs = np.zeros((num_datasets, num_dataToUse, num_features))
+train_outputs = np.zeros((num_datasets, num_dataToUse, 4))
+
+for i in range(0, num_datasets):
+    data_name = 'data_collection/dataset' + str(i+1) + '.csv'
+    dataset = pd.read_csv(data_name, header=None)
+    dataset = dataset.values
+
+    for j in range(0, dataset.shape[1]-4):
+        train_inputs[i, :, j] = dataset[0:num_dataToUse, j]
+    ind = 0
+
+    for z in range(dataset.shape[1]-4, dataset.shape[1]):
+        train_outputs[i,:,ind] = dataset[0:num_dataToUse, z]
+        ind+=1
+
+train_inputs = np.squeeze(train_inputs, axis=0)
+train_outputs = np.squeeze(train_outputs, axis=0)
+
+train_inputs  = input_scaler.fit_transform(train_inputs)
+train_outputs = output_scaler.fit_transform(train_outputs)
+
+
+num_samples = int(np.floor(num_dataToUse/num_timesteps))
+
+train_inputsFinal = np.zeros((num_samples, num_timesteps, num_features))
+train_outputsFinal = np.zeros((num_samples, num_timesteps, 4))
+
+index = 0
+for i in range(0, num_samples):
+
+    train_inputsFinal[i, :, :] = train_inputs[index:index+num_timesteps, :]
+    train_outputsFinal[i, :, :] = train_outputs[index:index+num_timesteps, :]
+    index += num_timesteps
+
 #from estimator_data import EstimatorData
 
 ID_OFFSET = 10000;
 FEATURES  = 5;
 TIMESTEPS = 437; # least number of timesteps in any simulation as it must be uniform
 #print(TIMESTEPS)
+
+"""
 train_inputs_all_sims  = np.zeros((4,TIMESTEPS,(FEATURES+1)*3)); #one extra row for robot items
 train_outputs_all_sims = np.zeros((4,TIMESTEPS,4))
 z=0;
 
-for n in range (4):
+for n in range (2):
     data_in_string = "alphred_dataset" + str(n+2) +".txt";
     est = EstimatorData(data_in_string);
     z=0;
@@ -73,7 +123,7 @@ train_inputs  = train_inputs_all_sims[0:3]
 train_outputs = train_outputs_all_sims[0:3]
 test_inputs  = np.expand_dims(test_inputs,axis=0)
 test_outputs = np.expand_dims(test_outputs,axis=0)
-
+"""
 ##Save Scaler##
 from pickle import dump
 dump(output_scaler, open('covariance_scaler.pkl', 'wb'))
@@ -89,10 +139,10 @@ print("Data Successfully Concatenated.")
 ###################################
 
 ACTIVATION_1 = 'relu';
-EPOCHS = 100;
+EPOCHS = 2000;
 
 model = tf.keras.Sequential()
-model.add(layers.SimpleRNN(256, input_shape=(None, (FEATURES*3)+3), activation=ACTIVATION_1, return_sequences=True))
+model.add(layers.SimpleRNN(256, input_shape=(50, num_features), activation=ACTIVATION_1, return_sequences=True))
 #model.add(layers.Dropout(0.2))
 model.add(layers.Dense(256, activation=ACTIVATION_1))
 #model.add(layers.Reshape((100, 256)))
@@ -109,7 +159,8 @@ model.add(layers.SimpleRNN(4, activation=ACTIVATION_1, return_sequences=True))
 #sgd = optimizers.SGD(lr=0.01, decay=1e-6, momentum=0.9, nesterov=False)
 model.compile(loss='mean_squared_error', optimizer='sgd', metrics=['accuracy'])
 model.summary()
-history = model.fit(train_inputs, train_outputs,validation_data=(test_inputs, test_outputs), batch_size=16, epochs=EPOCHS, verbose=2)
+# batch size = the number of samples? (samples, timesteps, features)
+history = model.fit(train_inputsFinal, train_outputsFinal, batch_size=16, epochs=EPOCHS, verbose=2)
 model.save('alphred_rnn_3.h5')
 
 ###################################
@@ -141,8 +192,8 @@ plt.show()
 
 # This is already calculated in the mpc code, I just needed an example data input.
 current_state = 0;
-future_states_desired = 10;
-MPC_Generated_Measurements = train_inputs[0, current_state:current_state + future_states_desired,:]
+future_states_desired = 50;
+MPC_Generated_Measurements = train_inputsFinal[0, current_state:current_state + future_states_desired,:]
 
 ####### THIS CODE IS USED TO MAKE PREDICTIONS #######
 from keras.models import load_model
@@ -152,7 +203,7 @@ RNN_output = model.predict(RNN_input)[0]
 covariance_predictions = output_scaler.inverse_transform(RNN_output)
 
 ###### Demonstrate Functionality ######
-truth_output = train_outputs[0, current_state:current_state + future_states_desired,:]
+truth_output = train_outputsFinal[0, :,:]
 truth_output = output_scaler.inverse_transform(truth_output)
 #print(RNN_input[0])
 #print(input_scaler.inverse_transform(RNN_input[0]))
