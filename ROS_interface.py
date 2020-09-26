@@ -68,6 +68,6 @@ class ROSInterface:
         else:
             for i in range(0, len(scans)):
                 if math.isinf(scans[i]) or scans[i] <= 10**-5 or np.isnan(scans[i]):
-                    scans[i] = float(1000)
+                    scans[i] = float(0)
             scans = sorted(scans)
         return scans

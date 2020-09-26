@@ -10,7 +10,7 @@ map_name = "map1"
 dT = 0.1
 mpc_horizon = 5
 curr_pos = np.array([0, 0, 0]).reshape(3,1)
-goal_points = [[20, 20, 0]]
+goal_points = [[15, 15, 0], [0, 0, 0], [15, 15, 0]]
 robot_size = 0.5
 lb_state = np.array([[-20], [-20], [-2]], dtype=float)
 ub_state = np.array([[20], [20], [2]], dtype=float)
@@ -35,7 +35,7 @@ for i in range(0, len(goal_points)):
     goal_pos = np.array(goal_points[i])
     MPC.opti.set_value(MPC.r_goal, goal_pos)
 
-    while m.sqrt((curr_pos[0] - goal_pos[0]) ** 2 + (curr_pos[1] - goal_pos[1]) ** 2) > 0.5 and not rospy.is_shutdown():
+    while m.sqrt((curr_pos[0] - goal_pos[0]) ** 2 + (curr_pos[1] - goal_pos[1]) ** 2) > 1 and not rospy.is_shutdown():
 
         sol = MPC.opti.solve()
         u_vec = sol.value(MPC.U[:, 0])
@@ -50,5 +50,7 @@ for i in range(0, len(goal_points)):
         dataset = np.vstack((dataset, np.hstack((scans, covs)).reshape(1, 364)))
 
 # saving dataset into the data_collection folder
+dataset, ind = np.unique(dataset, axis=0, return_index=True)
+dataset = dataset[np.argsort(ind)]
 dataset = np.delete(dataset, 0, 0)
 np.savetxt("data_collection/dataset1.csv", dataset, delimiter=",")
