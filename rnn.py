@@ -21,8 +21,12 @@ output_scaler = MinMaxScaler(feature_range = (0.01, 0.99))
 
 # number of datasets
 num_datasets = 1
-num_dataToUse = 2340
-num_timesteps = 50
+# number of data to use per dataset (ensure each dataset has equal or more data points than this value)
+num_dataToUse = 847
+# number of timesteps per sample. Value should correlate with the MPC prediction horizon
+num_timesteps = 6
+# number of epochs used for training
+EPOCHS = 1000
 
 # indicate whether dataset is from lidar scans or rgbd, default is lidar
 lidar = True
@@ -31,9 +35,9 @@ if lidar:
 else:
     num_features = 10
 
+# all data is concatenated into a 3D vector, based on how many datasets are currently in the data_collection folder
 train_inputs = np.zeros((num_datasets, num_dataToUse, num_features))
 train_outputs = np.zeros((num_datasets, num_dataToUse, 4))
-
 for i in range(0, num_datasets):
     data_name = 'data_collection/dataset' + str(i+1) + '.csv'
     dataset = pd.read_csv(data_name, header=None)
@@ -46,103 +50,36 @@ for i in range(0, num_datasets):
     for z in range(dataset.shape[1]-4, dataset.shape[1]):
         train_outputs[i,:,ind] = dataset[0:num_dataToUse, z]
         ind+=1
-
-train_inputs = np.squeeze(train_inputs, axis=0)
-train_outputs = np.squeeze(train_outputs, axis=0)
-
+# datasets are converted into a single dataset for scalar transformation
+train_inputs = train_inputs.reshape((-1, num_features))
+train_outputs = train_outputs.reshape((-1, 4))
 train_inputs  = input_scaler.fit_transform(train_inputs)
 train_outputs = output_scaler.fit_transform(train_outputs)
 
-
+# new dataset is created, which uses the previous datasets and splits it into several datasets or samples, where each
+# sample represents the number of timesteps to be predicted/trained on at a time. Ex, if the MPC prediction horizon is
+# 16, then each sample will have 16 timesteps.
 num_samples = int(np.floor(num_dataToUse/num_timesteps))
-
 train_inputsFinal = np.zeros((num_samples, num_timesteps, num_features))
 train_outputsFinal = np.zeros((num_samples, num_timesteps, 4))
-
 index = 0
 for i in range(0, num_samples):
-
     train_inputsFinal[i, :, :] = train_inputs[index:index+num_timesteps, :]
     train_outputsFinal[i, :, :] = train_outputs[index:index+num_timesteps, :]
     index += num_timesteps
 
-#from estimator_data import EstimatorData
-
-ID_OFFSET = 10000;
-FEATURES  = 5;
-TIMESTEPS = 437; # least number of timesteps in any simulation as it must be uniform
-#print(TIMESTEPS)
-
-"""
-train_inputs_all_sims  = np.zeros((4,TIMESTEPS,(FEATURES+1)*3)); #one extra row for robot items
-train_outputs_all_sims = np.zeros((4,TIMESTEPS,4))
-z=0;
-
-for n in range (2):
-    data_in_string = "alphred_dataset" + str(n+2) +".txt";
-    est = EstimatorData(data_in_string);
-    z=0;
-    feature_positions_list = est.feature_positions;
-
-    covariance = np.array(est.Psb[0:2,0:2,:])
-    covariance = np.swapaxes(covariance,0,2)
-    covariance = np.reshape(covariance[0:TIMESTEPS], (TIMESTEPS,4))
-
-    feature_ids_list = est.feature_ids;
-    feature_ids = np.zeros(len(feature_ids_list));
-
-    robot_position = est.Tsb;
-    robot_position = np.swapaxes(robot_position,0,1)
-
-    feature_positions = np.zeros((TIMESTEPS,FEATURES+1,3)); #one extra row for robot items
-
-    for i in range (TIMESTEPS):
-        feature_positions_temp = np.zeros((FEATURES,3));
-        if feature_ids_list[i].size != 0:
-            for j in range (len(feature_ids_list[i])):
-                feat_id = (feature_ids_list[i][j]) - ID_OFFSET;
-                if j < FEATURES:
-                    feature_positions_temp[j] = np.array(feature_positions_list[i][j]);
-        rob_pos = np.reshape(robot_position[i], (1,3))
-        total_timestep_items = np.append(feature_positions_temp, rob_pos,axis=0);
-        feature_positions[i] = total_timestep_items;
-    #print(feature_positions.shape)
-    train_inputs  = np.reshape(feature_positions,(TIMESTEPS,(FEATURES*3)+3));
-    train_outputs = covariance;
-
-    train_inputs  = input_scaler.fit_transform(train_inputs)
-    
-    
-    train_inputs_all_sims[n]  = train_inputs;
-    train_outputs_all_sims[n] = train_outputs;
-train_outputs = output_scaler.fit_transform(train_outputs)
-
-test_inputs  = train_inputs_all_sims[3]
-test_outputs = train_outputs_all_sims[3]
-train_inputs  = train_inputs_all_sims[0:3]
-train_outputs = train_outputs_all_sims[0:3]
-test_inputs  = np.expand_dims(test_inputs,axis=0)
-test_outputs = np.expand_dims(test_outputs,axis=0)
-"""
 ##Save Scaler##
 from pickle import dump
 dump(output_scaler, open('covariance_scaler.pkl', 'wb'))
-
 print("Data Successfully Concatenated.")
-#print(train_inputs.shape);
-#print(train_outputs.shape);
-#print(test_inputs.shape);
-#print(test_outputs.shape);
 
 ###################################
 ####TRAIN THE RNN####
 ###################################
 
 ACTIVATION_1 = 'relu';
-EPOCHS = 2000;
-
 model = tf.keras.Sequential()
-model.add(layers.SimpleRNN(256, input_shape=(50, num_features), activation=ACTIVATION_1, return_sequences=True))
+model.add(layers.SimpleRNN(256, input_shape=(num_timesteps, num_features), activation=ACTIVATION_1, return_sequences=True))
 #model.add(layers.Dropout(0.2))
 model.add(layers.Dense(256, activation=ACTIVATION_1))
 #model.add(layers.Reshape((100, 256)))
@@ -156,12 +93,18 @@ model.add(layers.SimpleRNN(16, activation=ACTIVATION_1, return_sequences=True))
 #model.add(layers.SimpleRNN(8, activation=ACTIVATION_1, return_sequences=True))
 model.add(layers.SimpleRNN(4, activation=ACTIVATION_1, return_sequences=True))
 
-#sgd = optimizers.SGD(lr=0.01, decay=1e-6, momentum=0.9, nesterov=False)
-model.compile(loss='mean_squared_error', optimizer='sgd', metrics=['accuracy'])
+#sgd = optimizers.SGD(lr=0.01, decay=1e-6, momentum=0.9, nesterov=False), optimizer = 'sgd'
+model.compile(loss='mean_squared_error', optimizer='adamax', metrics=['accuracy'])
 model.summary()
 # batch size = the number of samples? (samples, timesteps, features)
-history = model.fit(train_inputsFinal, train_outputsFinal, batch_size=16, epochs=EPOCHS, verbose=2)
-model.save('alphred_rnn_3.h5')
+history = model.fit(train_inputsFinal, train_outputsFinal, validation_split=0.1, batch_size=16, epochs=EPOCHS, verbose=2, shuffle=False)
+
+if lidar:
+    model_name = "pf_SLAM.h5"
+else:
+    model_name = "vio_SLAM.h5"
+
+model.save(model_name)
 
 ###################################
 #####PLOT LOSS######
@@ -190,26 +133,49 @@ plt.show()
 ####SHOW RESULTS####
 ###################################
 
-# This is already calculated in the mpc code, I just needed an example data input.
-current_state = 0;
-future_states_desired = 50;
-MPC_Generated_Measurements = train_inputsFinal[0, current_state:current_state + future_states_desired,:]
-
 ####### THIS CODE IS USED TO MAKE PREDICTIONS #######
 from keras.models import load_model
-#model = load_model('mpc_rnn.h5')
-RNN_input = MPC_Generated_Measurements[np.newaxis,:]
-RNN_output = model.predict(RNN_input)[0]
-covariance_predictions = output_scaler.inverse_transform(RNN_output)
+model = load_model(model_name)
+
+
+RNN_output = np.zeros((num_samples, num_timesteps, 4))
+for i in range(0, num_samples):
+    MPC_Generated_Measurements = train_inputsFinal[i, :, :]
+    RNN_input = MPC_Generated_Measurements[np.newaxis,:]
+    RNN_output_predict = model.predict(RNN_input)[0]
+    RNN_output[i,:,:] = RNN_output_predict
+
+RNN_output = RNN_output.reshape((-1,4))
+RNN_output = output_scaler.inverse_transform(RNN_output)
 
 ###### Demonstrate Functionality ######
-truth_output = train_outputsFinal[0, :,:]
+truth_output = train_outputsFinal
+truth_output = truth_output.reshape((-1,4))
 truth_output = output_scaler.inverse_transform(truth_output)
 #print(RNN_input[0])
 #print(input_scaler.inverse_transform(RNN_input[0]))
 #print(RNN_output)
-print("Covariance Predictions:")
-print(covariance_predictions)
-print("Covariance Truths:")
-print(truth_output)
 
+plt.plot(truth_output[:,0])
+plt.plot(RNN_output[:,0])
+plt.legend(["Truth", "Prediction"])
+plt.title("Truth vs Prediction Covariances, xx")
+plt.show()
+
+plt.plot(truth_output[:,1])
+plt.plot(RNN_output[:,1])
+plt.legend(["Truth", "Prediction"])
+plt.title("Truth vs Prediction Covariances, xy")
+plt.show()
+
+plt.plot(truth_output[:,2])
+plt.plot(RNN_output[:,2])
+plt.legend(["Truth", "Prediction"])
+plt.title("Truth vs Prediction Covariances, yx")
+plt.show()
+
+plt.plot(truth_output[:,3])
+plt.plot(RNN_output[:,3])
+plt.legend(["Truth", "Prediction"])
+plt.title("Truth vs Prediction Covariances, yy")
+plt.show()
