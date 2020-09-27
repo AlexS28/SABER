@@ -26,9 +26,9 @@ num_dataToUse = 847
 num_timesteps = 6
 # number of epochs used for training
 EPOCHS = 1000
-
 # indicate whether dataset is from lidar scans or rgbd, default is lidar
 lidar = True
+
 if lidar:
     num_features = 360
 else:

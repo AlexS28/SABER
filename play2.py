@@ -2,10 +2,6 @@ from MPC_ugv_Simple import *
 import time
 import os
 
-# input name of map, where mapping and then collection will be done (map# must also be changed in both launch files
-# manually). The world map used for mapping and collecting must be included in the 'worlds' folder and named as world#)
-map_name = "map1"
-
 # initialize all required variables for the MPC solver
 dT = 0.1
 mpc_horizon = 5
