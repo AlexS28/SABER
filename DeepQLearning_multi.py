@@ -1,7 +1,14 @@
-#!/usr/bin/env python
-# coding: utf-8
+"""
+Trains two models, a ground robot and a scouting drone. It simulates the robot being blind to obstacles,
+encouraging the drone to do the majority of the exploring by penalizing movements harder when simulated
+uncertainty is higher. Actions which would promote uncertainty in real life will punish the system harder.
 
-# In[1]:
+The drone is encouraged to explore the environment quickly and return to the ground robot, and the ground
+robot uses this information to stay close to the obstacles without hitting them. It is also encouraged to
+get to the goal as quickly as possible, as the punishment for waiting is exponentially increasing. Hopefully,
+the Network is able to find the optimal combination of waiting for the environment to be explored, and moving
+toward the goal in a quick but certain way.
+"""
 
 
 ############################## IMPORTS ##############################
@@ -51,9 +58,9 @@ else:
     AGGREGATE_STATS_EVERY = 1
 
 # Exploration settings
-robot_epsilon = 0.01  # limit robot random exploration
-drone_epsilon = 0.5 # we want drone to explore more
-EPSILON_DECAY = 0.95
+robot_epsilon = 1  # limit robot random exploration
+drone_epsilon = 1 # we want drone to explore more
+EPSILON_DECAY = 0.999997
 MIN_EPSILON = 0.001
 
 SHOW_PREVIEW = True
@@ -100,8 +107,8 @@ elif MAP_NUMBER == '5':
     D1Y = 0
     G1X = 9
     G1Y = 9
-    OBSTACLE_X = [5,7,3,4,6,3,5,4,2,5]
-    OBSTACLE_Y = [5,7,4,3,8,5,4,5,3,3]
+    OBSTACLE_X = [5,7,3,4,6,3,5,4,2,5,4,3]
+    OBSTACLE_Y = [5,7,4,3,8,5,4,5,3,3,4,3]
     NUM_OBSTACLES = len(OBSTACLE_X)
 elif MAP_NUMBER == '6': # Two obstacles lined up perpendicular to goal path
     R1X = 0
@@ -266,7 +273,8 @@ class BlobEnv:
     
     GOAL_REWARD = 1000
     GOAL_PROXIMITY_THRESHOLD = 10
-    GOAL_PROXIMITY_MAX_REWARD = 3
+    GOAL_PROXIMITY_MAX_REWARD = 1
+    GOAL_REWARD_EXP_CONSTANT = 0.5
 
     DRONE_PROXIMITY_THRESHOLD = 5
     DRONE_PROXIMITY_REWARD = 1
@@ -335,7 +343,7 @@ class BlobEnv:
             # constantly rewarded based on distance from the goal if (close enough)
             robot_to_goal = distance.euclidean((self.robot.x,self.robot.y) ,(self.goal.x,self.goal.y))
             if robot_to_goal <= self.GOAL_PROXIMITY_THRESHOLD:
-                robot_reward += translate(robot_to_goal, 0, self.GOAL_PROXIMITY_THRESHOLD, self.GOAL_PROXIMITY_MAX_REWARD, 0)
+                robot_reward += (self.GOAL_PROXIMITY_MAX_REWARD * math.exp(self.GOAL_REWARD_EXP_CONSTANT*(self.SIZE - robot_to_goal)))
             # if distance from any other agent is (close enough) reward it because we want uncertainty lower and being closer to another agent decreases uncertainty
             robot_to_drone = distance.euclidean((self.robot.x,self.robot.y) ,(self.drone.x,self.drone.y))
             if robot_to_drone <= self.DRONE_PROXIMITY_THRESHOLD:
@@ -383,8 +391,8 @@ class BlobEnv:
         env[self.robot.x][self.robot.y] = self.colors["robot"]  # sets the robot tile to blue
         env[self.drone.x][self.drone.y] = self.colors["drone"]  # sets the drone tile to purple
         env[self.goal.x][self.goal.y] = self.colors["goal"]  # sets the goal location tile to green color
-        for obstacle in self.unseen_obstacles:
-            env[obstacle.x][obstacle.y] = self.colors["unseen_obstacle"]  # sets the obstacle locations to dark red
+        #for obstacle in self.unseen_obstacles:
+            #env[obstacle.x][obstacle.y] = self.colors["unseen_obstacle"]  # sets the obstacle locations to dark red
         for obstacle in self.seen_obstacles:
             env[obstacle.x][obstacle.y] = self.colors["seen_obstacle"]  # sets the seen obstacle locations to bright red
 
@@ -438,7 +446,7 @@ class DQNAgent:
         model.add(Dense(64))
 
         model.add(Dense(env.ACTION_SPACE_SIZE, activation='linear'))  # ACTION_SPACE_SIZE = how many choices (9)
-        model.compile(loss="mse", optimizer=Adam(lr=0.002), metrics=['accuracy'])
+        model.compile(loss="mse", optimizer=Adam(lr=0.5), metrics=['accuracy'])
         return model
 
     # Adds step's data to a memory replay array
