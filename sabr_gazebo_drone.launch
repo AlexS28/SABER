@@ -1,0 +1,10 @@
+<?xml version = "1.0"?>
+
+<launch>
+	<include file="$(find gazebo_ros)/launch/empty_world.launch">
+    	<arg name="world_name" value="$(find sabr_pkg)/src/SABR/worlds/world_drone.world"/>
+  	</include>
+    <include file="$(find hector_quadrotor_gazebo)/launch/spawn_quadrotor_with_kinect_SABR.launch">
+    </include>
+</launch>
+

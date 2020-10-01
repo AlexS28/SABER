@@ -49,6 +49,7 @@ for i in range(0, num_datasets):
     for z in range(dataset.shape[1]-4, dataset.shape[1]):
         train_outputs[i,:,ind] = dataset[0:num_dataToUse, z]
         ind+=1
+
 # datasets are converted into a single dataset for scalar transformation
 train_inputs = train_inputs.reshape((-1, num_features))
 train_outputs = train_outputs.reshape((-1, 4))
