@@ -32,10 +32,10 @@ from scipy.spatial import distance
 
 ############################## SETTINGS ##############################
 
-DISCOUNT = 0.99
+DISCOUNT = 0.9
 REPLAY_MEMORY_SIZE = 50_000  # How many last steps to keep for model training
 MIN_REPLAY_MEMORY_SIZE = 1_000  # Minimum number of steps in a memory to start training
-MINIBATCH_SIZE = 64  # How many steps (samples) to use for training
+MINIBATCH_SIZE = 1000 # How many steps (samples) to use for training
 UPDATE_TARGET_EVERY = 5  # Terminal states (end of episodes)x
 MIN_REWARD = -200  # For model save
 MEMORY_FRACTION = 0.20
@@ -58,10 +58,10 @@ else:
     AGGREGATE_STATS_EVERY = 1
 
 # Exploration settings
-robot_epsilon = 1  # limit robot random exploration
+robot_epsilon = 0.8  # limit robot random exploration
 drone_epsilon = 1 # we want drone to explore more
-EPSILON_DECAY = 0.99997
-MIN_EPSILON = 0.001
+EPSILON_DECAY = 0.999
+MIN_EPSILON = 0.1
 
 SHOW_PREVIEW = True
 
@@ -266,12 +266,12 @@ class BlobEnv:
     ROBOT_VISION_DISTANCE = 2
     DRONE_VISION_DISTANCE = 3
     
-    OBSTACLE_COLLISION_PENALTY = 2000
+    OBSTACLE_COLLISION_PENALTY = 10000
     OBSTACLE_PROXIMITY_THRESHOLD = 2
     OBSTACLE_PROXIMITY_LIMIT = 5
     OBSTACLE_PROXIMITY_PENALTY = 1
     
-    GOAL_REWARD = 1000
+    GOAL_REWARD = 100000
     GOAL_PROXIMITY_THRESHOLD = 10
     GOAL_PROXIMITY_MAX_REWARD = 1
     GOAL_REWARD_EXP_CONSTANT = 0.5
@@ -544,10 +544,10 @@ if TRAINING:
                 robot_actions, drone_actions = robot_agent.get_qs(current_state)
                 robot_action = np.argmax(robot_actions)
                 drone_action = np.argmax(drone_actions)
-                print("calc")
+                #print("calc")
             else:
                 # Get random action
-                print("rand")
+                #print("rand")
                 robot_action = np.random.randint(0, env.ACTION_SPACE_SIZE)
                 drone_action = np.random.randint(0, env.ACTION_SPACE_SIZE)
 
