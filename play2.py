@@ -6,12 +6,12 @@ import os
 dT = 0.1
 mpc_horizon = 5
 curr_pos = np.array([0, 0, 0]).reshape(3,1)
-goal_points = [[10, 10, 0]]
+goal_points = [[8,0,0], [7, 8, 0], [-1,6,0], [-7, 4, 0], [-7, 0, 0], [1,-4,0], [6,-4,0], [0,0,0]]
 robot_size = 0.5
 lb_state = np.array([[-20], [-20], [-2]], dtype=float)
 ub_state = np.array([[20], [20], [2]], dtype=float)
-lb_control = np.array([[-0.2], [-1.82/10]], dtype=float) # CHANGED
-ub_control = np.array([[0.2], [1.82/10]], dtype=float) # CHANGED
+lb_control = np.array([[-0.2], [-1.82/2]], dtype=float) # CHANGED
+ub_control = np.array([[0.2], [1.82/2]], dtype=float) # CHANGED
 Q = np.array([[1, 0, 0], [0, 2, 0], [0, 0, 0.1]])
 R = np.array([[0.5, 0], [0, 0.05]])
 animate = True
