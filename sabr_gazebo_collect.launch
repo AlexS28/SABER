@@ -6,8 +6,8 @@
   	</include>
 	<include file="$(find turtlebot3_slam)/launch/turtlebot3_slam.launch">
 	</include>
-	<node name="map_server" type="map_server" pkg="map_server" args="/home/alexander/catkin_SABR/src/sabr_pkg/src/SABR/maps/map1.yaml"/>
+	<node name="map_server" type="map_server" pkg="map_server" args="/home/alexander/catkin_SABR/src/sabr_pkg/src/SABR/maps/world1.yaml"/>
 	<node name="amcl" type="amcl" pkg="amcl">
-		<param name="update_min_d" type="double" value="0.1"/>
+		<param name="update_min_d" type="double" value="0.01"/>
 	</node>
 </launch>

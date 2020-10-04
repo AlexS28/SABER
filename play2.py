@@ -6,10 +6,10 @@ import os
 dT = 0.1
 mpc_horizon = 5
 curr_pos = np.array([0, 0, 0]).reshape(3,1)
-goal_points = [[8,0,0], [7, 8, 0], [-1,6,0], [-7, 4, 0], [-7, 0, 0], [1,-4,0], [6,-4,0], [0,0,0]]
+goal_points = [[10, 10, 0], [0, 0, 0]]
 robot_size = 0.5
-lb_state = np.array([[-20], [-20], [-2]], dtype=float)
-ub_state = np.array([[20], [20], [2]], dtype=float)
+lb_state = np.array([[-20], [-20], [-2*pi]], dtype=float)
+ub_state = np.array([[20], [20], [2*pi]], dtype=float)
 lb_control = np.array([[-0.2], [-1.82/2]], dtype=float) # CHANGED
 ub_control = np.array([[0.2], [1.82/2]], dtype=float) # CHANGED
 Q = np.array([[1, 0, 0], [0, 2, 0], [0, 0, 0.1]])
@@ -21,6 +21,7 @@ MPC = MPC_UGV_Planner(dT, mpc_horizon, curr_pos, lb_state,
 
 ROS = ROSInterface()
 rospy.init_node('ros_interface')
+rate = rospy.Rate(10)
 
 for i in range(0, len(goal_points)):
 
@@ -34,10 +35,11 @@ for i in range(0, len(goal_points)):
         ROS.send_velocity(u_vec)
         curr_pos = ROS.get_current_pose()
         MPC.opti.set_value(MPC.r_pos, curr_pos)
+        rate.sleep()
         #MPC.animate(curr_pos)
 
 # shut down previous nodes, save the map and start nodes for the data collection process
 print('saving map in maps folder')
-time.sleep(1)
+time.sleep(5)
 print('restarting all nodes for data collection')
 os.popen('sh save_map.sh')
