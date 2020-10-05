@@ -7,7 +7,7 @@ import os
 dT = 0.1
 mpc_horizon = 5
 curr_pos = np.array([0, 0, 0]).reshape(3,1)
-goal_points = [[10, 10, 0], [0, 0, 0]]
+goal_points = [[3,2,0], [5,7,0], [6,10,0], [-6,10,0], [-5.5, 3,0],[-3,-5,0],[3,-8,0],[7,-4,0], [10,0,0]]
 robot_size = 0.5
 lb_state = np.array([[-20], [-20], [-2*pi]], dtype=float)
 ub_state = np.array([[20], [20], [2*pi]], dtype=float)
@@ -52,5 +52,5 @@ for i in range(0, len(goal_points)):
 #dataset, ind = np.unique(dataset, axis=0, return_index=True)
 #dataset = dataset[np.argsort(ind)]
 dataset = np.delete(dataset, 0, 0)
-np.savetxt("data_collection/dataset1.csv", dataset, delimiter=",")
+np.savetxt("data_collection/dataset5.csv", dataset, delimiter=",")
 print("DATA COLLECTION COMPLETE: PLEASE CLOSE GAZEBO WINDOW THROUGH TERMINAL")

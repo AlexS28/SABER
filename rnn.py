@@ -21,11 +21,11 @@ output_scaler = MinMaxScaler(feature_range = (0.01, 0.99))
 # number of datasets
 num_datasets = 1
 # number of data to use per dataset (ensure each dataset has equal or more data points than this value)
-num_dataToUse = 1300
-# number of timesteps per sample. Value should correlate with the MPC prediction horizon
-num_timesteps = 10
+num_dataToUse = 2667
+# number of timesteps per sample.
+num_timesteps = 50
 # number of epochs used for training
-EPOCHS = 30000
+EPOCHS = 3000
 # indicate whether dataset is from lidar scans or rgbd, default is lidar
 lidar = True
 
@@ -70,7 +70,7 @@ for i in range(0, num_samples):
 
 ##Save Scaler##
 from pickle import dump
-dump(output_scaler, open('rnn_models/covariance_scaler.pkl', 'wb'))
+#dump(output_scaler, open('rnn_models/covariance_scaler.pkl', 'wb'))
 print("Data Successfully Concatenated.")
 
 ###################################
@@ -93,11 +93,11 @@ model.add(layers.SimpleRNN(16, activation=ACTIVATION_1, return_sequences=True))
 #model.add(layers.SimpleRNN(8, activation=ACTIVATION_1, return_sequences=True))
 model.add(layers.SimpleRNN(4, activation=ACTIVATION_1, return_sequences=True))
 
-#sgd = optimizers.SGD(lr=0.1, decay=1e-6, momentum=0.9, nesterov=False)
-model.compile(loss='mean_squared_error', optimizer='adamax', metrics=['accuracy'])
+
+model.compile(loss='mean_squared_error', optimizer='sqd', metrics=['accuracy'])
 model.summary()
 # batch size = the number of samples? (samples, timesteps, features)
-history = model.fit(train_inputsFinal, train_outputsFinal, validation_split=0.1, batch_size=16, epochs=EPOCHS, verbose=2, shuffle=False)
+history = model.fit(train_inputsFinal, train_outputsFinal, batch_size=16, epochs=EPOCHS, verbose=2, shuffle=False)
 
 if lidar:
     model_name = "rnn_models/pf_SLAM.h5"

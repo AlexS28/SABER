@@ -6,7 +6,7 @@ import os
 dT = 0.1
 mpc_horizon = 5
 curr_pos = np.array([0, 0, 0]).reshape(3,1)
-goal_points = [[10, 10, 0], [0, 0, 0]]
+goal_points = [[3,2,0], [5,7,0], [6,10,0], [-6,10,0], [-5.5, 3,0],[-3,-5,0],[3,-8,0],[7,-4,0], [10,0,0]]
 robot_size = 0.5
 lb_state = np.array([[-20], [-20], [-2*pi]], dtype=float)
 ub_state = np.array([[20], [20], [2*pi]], dtype=float)
