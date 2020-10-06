@@ -56,9 +56,26 @@ class ROSInterface:
 
     # Convert Pose Cov to MPC state format
     def get_current_poseCov(self):
-        return [self.current_posCov.pose.covariance[0], self.current_posCov.pose.covariance[1], self.current_posCov.pose.covariance[6], self.current_posCov.pose.covariance[7]]
+        if self.current_posCov.pose.covariance[0] >= 1:
+            xx = 1
+        else:
+            xx = self.current_posCov.pose.covariance[0]
+        if self.current_posCov.pose.covariance[1] >= 1:
+            xy = 1
+        else:
+            xy = self.current_posCov.pose.covariance[1]
+        if self.current_posCov.pose.covariance[6] >= 1:
+            yx = 1
+        else:
+            yx = self.current_posCov.pose.covariance[6]
+        if self.current_posCov.pose.covariance[7] >= 1:
+            yy = 1
+        else:
+            yy = self.current_posCov.pose.covariance[7]
 
-    # Convert Scan to Data collection format (order scans from least to greatest, and convert inf, nan, to zeros)
+        return [xx, xy, yx, yy]
+
+    # Convert Scan to Data collection format (order scans from least to greatest, and convert inf, nan, to max value of 4)
     def get_current_scan(self):
         scans = list(self.current_scan.ranges)
 
@@ -67,7 +84,7 @@ class ROSInterface:
             scans = scans.tolist()
         else:
             for i in range(0, len(scans)):
-                if math.isinf(scans[i]) or scans[i] <= 10**-5 or np.isnan(scans[i]):
-                    scans[i] = float(0)
+                if math.isinf(scans[i]) or np.isnan(scans[i]):
+                    scans[i] = float(4)
             scans = sorted(scans)
         return scans

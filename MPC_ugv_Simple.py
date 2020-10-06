@@ -12,6 +12,8 @@ import matplotlib.pyplot as plt
 import math as m
 import time
 from ROS_interface import *
+#from keras.models import load_model
+#model = load_model('rnn_models/pf_SLAM.h5')
 
 class MPC_UGV_Planner():
 
@@ -118,6 +120,13 @@ class MPC_UGV_Planner():
         opts.update({'print_time': 0})
         # create solver
         self.opti.solver('ipopt', opts)
+
+    def rnn_cov(self, scans, mpc_future_states):
+        # TODO: get scans, convert scan distances into x,y positions, propagate mpc solution to 'predict' future scan
+        # TODO: information, which serves as input to the RNN function
+        #RNN_input = MPC_Generated_Measurements[np.newaxis, :]
+        #RNN_output_predict = model.predict(RNN_input)[0]
+        return 0
 
     def animate(self, curr_pos):
         plt.cla()

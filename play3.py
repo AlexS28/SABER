@@ -2,12 +2,17 @@ from MPC_ugv_Simple import *
 import time
 import os
 
-
+"""
+Dataset 1: world_dist_testUGV: [9, 10, 0], [0, 10, 0], [0, -10, 0], [-9,-9, 0]
+Dataset 2: world_feature_rich: [8,0,0], [7, 8, 0], [-1,6,0], [-7, 4, 0], [-7, 0, 0], [1,-4,0], [6,-4,0], [0,0,0]
+Dataset 3/4: world_cube/cylinderUGV: [6, 4, 0], [6,7,0], [10,10,0]
+Dataset5: world_cube_cylinderUGV: [3,2,0], [6,7,0], [5,10,0], [-6,10,0], [-5.5, 3,0],[-3,-5,0],[3,-8,0],[7,-4,0], [10,0,0]
+"""
 # initialize all required variables for the MPC solver
 dT = 0.1
 mpc_horizon = 5
 curr_pos = np.array([0, 0, 0]).reshape(3,1)
-goal_points = [[3,2,0], [5,7,0], [6,10,0], [-6,10,0], [-5.5, 3,0],[-3,-5,0],[3,-8,0],[7,-4,0], [10,0,0]]
+goal_points = [[3,2,0], [6,7,0], [5,10,0], [-6,10,0], [-5.5, 3,0],[-3,-5,0],[3,-8,0],[7,-4,0], [10,0,0]]
 robot_size = 0.5
 lb_state = np.array([[-20], [-20], [-2*pi]], dtype=float)
 ub_state = np.array([[20], [20], [2*pi]], dtype=float)
@@ -52,5 +57,5 @@ for i in range(0, len(goal_points)):
 #dataset, ind = np.unique(dataset, axis=0, return_index=True)
 #dataset = dataset[np.argsort(ind)]
 dataset = np.delete(dataset, 0, 0)
-np.savetxt("data_collection/dataset5.csv", dataset, delimiter=",")
+np.savetxt("data_collection/dataset2.csv", dataset, delimiter=",")
 print("DATA COLLECTION COMPLETE: PLEASE CLOSE GAZEBO WINDOW THROUGH TERMINAL")
