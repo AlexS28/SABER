@@ -43,6 +43,7 @@ class dqnEnv(gym.Env):
     self.next_state = np.zeros(((self.NUM_OBSTACLES + 1)*2,))
     self.next_state[0] = distance.euclidean((self.xr, self.yr), (self.gxr, self.gyr))
     self.next_state[1] = distance.euclidean((self.xd, self.yd), (self.gxd, self.gyd))
+    self.next_state[2] = distance.euclidean((self.xr, self.yr), (self.xd, self.yd))
     self.size = map_size
     # each robot has 9 possible actions, two robots simultaneously --> 9x9 = 81 actions
     self.actions = cartesian(([-1,0,1],[-1,0,1],[-1,0,1],[-1,0,1]))
@@ -71,7 +72,7 @@ class dqnEnv(gym.Env):
       for obstacle in self.seen_obstacles:
         if self.xr == obstacle.x and self.yr == obstacle.y:
             self.reward_r -= self.OBSTACLE_COLLISION_PENALTY
-            self.done = True
+            self.done_r = True
         if self.xd == obstacle.x and self.yd == obstacle.y:
             self.reward_d -= self.OBSTACLE_COLLISION_PENALTY
             self.done_d = True
@@ -79,7 +80,7 @@ class dqnEnv(gym.Env):
       # reward either robot or drone if getting to goal
       if not self.done_r and self.xr == self.gxr and self.yr == self.gyr:
         self.reward_r += self.GOAL_REWARD
-        self.done = True
+        self.done_r = True
 
       if not self.done_d and self.xd == self.gxd and self.yd == self.gyd:
         self.reward_d += self.GOAL_REWARD
@@ -94,16 +95,19 @@ class dqnEnv(gym.Env):
           self.unseen_obstacles.remove(obstacle)
 
       for i in range(0, len(self.seen_obstacles)):
-        self.next_state[i+2] = distance.euclidean((self.xr, self.yr), (self.seen_obstacles[i].x, self.seen_obstacles[i].y))
-        self.next_state[i+2+self.NUM_OBSTACLES] = distance.euclidean((self.xd, self.yd), (self.seen_obstacles[i].x, self.seen_obstacles[i].y))
+        self.next_state[i+3] = distance.euclidean((self.xr, self.yr), (self.seen_obstacles[i].x, self.seen_obstacles[i].y))
+        self.next_state[i+3+self.NUM_OBSTACLES] = distance.euclidean((self.xd, self.yd), (self.seen_obstacles[i].x, self.seen_obstacles[i].y))
 
       self.next_state[0] = distance.euclidean((self.xr, self.yr), (self.gxr, self.gyr))
       self.next_state[1] = distance.euclidean((self.xd, self.yd), (self.gxd, self.gyd))
+      self.next_state[2] = distance.euclidean((self.xr, self.yr), (self.xd, self.yd))
 
-      self.reward = self.reward_r + self.reward_d
+      #self.reward_r -=1
+      #self.reward_d -=1
 
-      if self.done_r and self.done_d:
+      if (self.done_r and self.done_d):
           self.done = True
+          self.reward = self.reward_r + self.reward_d
 
       return self.next_state, self.reward, self.done
 
@@ -143,9 +147,10 @@ class dqnEnv(gym.Env):
       self.unseen_obstacles = self.obstacles
       self.seen_obstacles = []
       self.episode_step = 0
-      self.next_state = np.zeros(((self.NUM_OBSTACLES+1)*2, ))
+      self.next_state = np.zeros(((self.NUM_OBSTACLES+1)*2+1, ))
       self.next_state[0] = distance.euclidean((self.xr, self.yr), (self.gxr, self.gyr))
       self.next_state[1] = distance.euclidean((self.xd, self.yd), (self.gxd, self.gyd))
+      self.next_state[2] = distance.euclidean((self.xr, self.yr), (self.xd, self.yd))
       # termination state for ground robot r and drone robot d
       self.done_r = False
       self.done_d = False

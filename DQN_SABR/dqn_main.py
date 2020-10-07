@@ -11,19 +11,19 @@ env = gym.make('dqn-v0')
 MAP_SIZE=10
 robot_start = [0, 0]
 robot_goal = [9, 9]
-drone_start = [0, 0]
-drone_goal = [9, 9]
+drone_start = [9, 0]
+drone_goal = [0, 9]
 OBSTACLE_X = [5, 7, 3, 4, 6, 3, 5, 4, 2, 5, 4, 3]
 OBSTACLE_Y = [5, 7, 4, 3, 8, 5, 4, 5, 3, 3, 4, 3]
 
 env.init(robot_start[0], robot_start[1], robot_goal[0], robot_goal[1], drone_start[0], drone_start[1], drone_goal[0], drone_goal[1], MAP_SIZE, OBSTACLE_X, OBSTACLE_Y)
 env.seed(0)
-agent = Agent(state_size=(len(OBSTACLE_X)+1)*2, action_size=81, seed=0)
+agent = Agent(state_size=(len(OBSTACLE_X)+1)*2+1, action_size=81, seed=0)
 
 
 
 
-def dqn(n_episodes=1000, max_t=50, eps_start=1, eps_end=0.05, eps_decay=0.995):
+def dqn(n_episodes=5000, max_t=100, eps_start=1, eps_end=0.01, eps_decay=0.995):
 
     """Deep Q-Learning.
     Params
@@ -61,14 +61,14 @@ def dqn(n_episodes=1000, max_t=50, eps_start=1, eps_end=0.05, eps_decay=0.995):
             scores_graph.append(np.mean(scores_window))
             max_avg = np.mean(scores_window)
 
-            if max_avg == np.max(scores_graph):
-        #if np.mean(scores_window) >= 99:
-            #print('\nEnvironment solved in {:d} episodes!\tAverage Score: {:.2f}'.format(i_episode - 100,
-                                                                        #np.mean(scores_window)))
-                print("Model saved, maximum average was: {:.2f} ".format(max_avg))
-                torch.save(agent.qnetwork_local.state_dict(), 'checkpoint.pth')
 
-    print(max_avg)
+        if np.mean(scores_window) >= 1.9:
+            print('\nEnvironment solved in {:d} episodes!\tAverage Score: {:.2f}'.format(i_episode - 100,
+                                                                        np.mean(scores_window)))
+            torch.save(agent.qnetwork_local.state_dict(), 'checkpoint.pth')
+            #break
+
+    #torch.save(agent.qnetwork_local.state_dict(), 'checkpoint.pth')
     return scores_graph
 
 scores_graph = dqn()
