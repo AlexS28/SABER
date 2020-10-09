@@ -1,0 +1,32 @@
+<package>
+  <name>sabr_pkg</name>
+  <version>0.0.1</version>
+  <description> 
+    RNN-MPC and DQN Global Planning
+  </description>
+  <maintainer email="aschperberg28@g.ucla.edu">Alex Schperberg</maintainer>
+  <license>TBD</license>
+
+  <url>https://github.com/AlexS28/SABR</url>
+  <author>Alex Schperberg</author>
+
+  <buildtool_depend>catkin</buildtool_depend>
+
+  <build_depend>message_generation</build_depend>
+  <build_depend>rospy</build_depend>
+  <build_depend>geometry_msgs</build_depend>
+  <build_depend>nav_msgs</build_depend>
+  <build_depend>sensor_msgs</build_depend>
+  <build_depend>tf</build_depend>
+
+  <run_depend>message_runtime</run_depend>
+  <run_depend>rospy</run_depend>
+  <run_depend>python-rospkg</run_depend>
+  <run_depend>geometry_msgs</run_depend>
+  <run_depend>nav_msgs</run_depend>
+  <run_depend>sensor_msgs</run_depend>
+  <run_depend>tf</run_depend>
+
+</package>
+
+
