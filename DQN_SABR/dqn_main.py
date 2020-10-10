@@ -10,7 +10,7 @@ import torch.optim as optim
 
 env = gym.make('dqn-v0')
 MAP_SIZE=10
-robot_start = [0, 0]
+robot_start = [5, 0]
 robot_goal = [0, 9]
 drone_start = [0, 0]
 drone_goal = [9, 9]
@@ -23,7 +23,7 @@ agent = Agent(state_size=(len(OBSTACLE_X)+1)*2, action_size=81, seed=0)
 
 
 # max_t = 200, eps_.999, eps_end 0.1
-def dqn(n_episodes=8000, max_t=100, eps_start=1, eps_end=0.05, eps_decay=0.9995):
+def dqn(n_episodes=15000, max_t=100, eps_start=1, eps_end=0.05, eps_decay=0.99995):
 
     """Deep Q-Learning.
     Params
@@ -39,17 +39,22 @@ def dqn(n_episodes=8000, max_t=100, eps_start=1, eps_end=0.05, eps_decay=0.9995)
     scores = []  # list containing scores from each episode
     scores_graph = []
     # specify the number of models that will be saved, per training run
-    number_scores = 100
+    number_models = 100
     scores_window = []  # last 100 scores
     eps = eps_start  # initialize epsilon
     index_model = 0
+
+    #model_dict = {0: agent.qnetwork_local.state_dict()}
+    #for i in range(1, number_scores):
+        #model_dict.update({i: agent.qnetwork_local.state_dict()})
+
 
     for i_episode in range(1, n_episodes + 1):
         state = env.reset()
         score = 0
         for t in range(max_t):
             action = agent.act(state, eps)
-            next_state, reward, done = env.step(action)
+            next_state, reward, done, _ = env.step(action)
             agent.step(state, action, reward, next_state, done)
             state = next_state
             score += reward
@@ -60,9 +65,8 @@ def dqn(n_episodes=8000, max_t=100, eps_start=1, eps_end=0.05, eps_decay=0.9995)
         scores_window.append(score)  # save most recent score
         scores.append(score)  # save most recent score
         eps = max(eps_end, eps_decay * eps)  # decrease epsilon
-
         print('\rEpisode {}\tAverage Score: {:.2f}'.format(i_episode, np.mean(scores_window)), end="")
-        if i_episode % 100 == 0:
+        if i_episode % 25 == 0:
             scores_window_model = scores_window
             print('\rEpisode {}\tAverage Score: {:.2f}'.format(i_episode, np.mean(scores_window)))
             scores_graph.append(np.mean(scores_window))
@@ -70,9 +74,10 @@ def dqn(n_episodes=8000, max_t=100, eps_start=1, eps_end=0.05, eps_decay=0.9995)
             scores_window = []
 
             if max_avg == np.max(scores_graph):
-                if index_model == number_scores:
+                if index_model == number_models:
                     index_model = 0
-                print("Model saved! maximum average reward was: {:.2f}".format(np.max(scores_window_model)))
+                print("Model saved! maximum average reward was: {:.2f}".format(np.mean(scores_window_model)))
+                #index_min = min(range(len(scores_window_model)), key=scores_window_model.__getitem__)
                 # saving all models from best run in a folder
                 torch.save(agent.qnetwork_local.state_dict(), 'dqn_models/checkpoint{}.pth'.format(index_model))
                 index_model += 1

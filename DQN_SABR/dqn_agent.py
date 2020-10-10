@@ -12,14 +12,14 @@ import torch.optim as optim
 #int(50000), batch = 1000, GAMMA = 0.9, TAU=1e-3, LR=0.5, UPDATE=5 (max achieved at 7100 Episodes)
 # TODO: To prevent overfitting or overtraining, BATCH_SIZE should increase during training
 # TODO: FOLLOW THIS PAPER: https://openreview.net/pdf?id=B1Yy1BxCZ
-
-BUFFER_SIZE = int(1000)  # replay buffer size
+#100
+BUFFER_SIZE = int(50000)  # replay buffer size
 # BATCH_SIZE = 64, 10 (10 is good), 5 better (the lower the better for some reason?)
-BATCH_SIZE = 10 # minibatch size
+BATCH_SIZE = 1000 # minibatch size
 GAMMA = 0.99  # discount factor
 TAU = 1e-3  # for soft update of target parameters
 LR = 5e-4 # learning rate
-UPDATE_EVERY = 5  # how often to update the network
+UPDATE_EVERY = 100  # how often to update the network
 
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 

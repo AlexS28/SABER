@@ -109,7 +109,7 @@ class dqnEnv(gym.Env):
       if self.step_number > 50:
           self.reward += self.reward_step
 
-      return self.next_state, self.reward, self.done
+      return self.next_state, self.reward, self.done, {}
 
   def move(self, xr, yr, xd, yd):
 
@@ -148,7 +148,7 @@ class dqnEnv(gym.Env):
         self.unseen_obstacles.append(new_obstacle)
       self.seen_obstacles = []
       self.episode_step = 0
-      self.next_state = np.ones(((self.NUM_OBSTACLES+1)*2, ))*14
+      self.next_state = np.zeros(((self.NUM_OBSTACLES+1)*2, ))
       self.next_state[0] = round(distance.euclidean((self.xr, self.yr), (self.gxr, self.gyr)),2)
       self.next_state[1] = round(distance.euclidean((self.xd, self.yd), (self.gxd, self.gyd)),2)
       # reward for ground robot r and drone robot d
