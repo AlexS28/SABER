@@ -1,18 +1,25 @@
 import numpy as np
 import random
 from collections import namedtuple, deque
+
 from DQN_SABR.model import QNetwork
+
 import torch
 import torch.nn.functional as F
 import torch.optim as optim
 
-BUFFER_SIZE = int(1e5)  # replay buffer size
+#int(100), batch = 10, GAMMA = 0.99, TAU=1e-3, LR=5e-4, UPDATE=1000 (max achieved at 7100 Episodes)
+#int(50000), batch = 1000, GAMMA = 0.9, TAU=1e-3, LR=0.5, UPDATE=5 (max achieved at 7100 Episodes)
+# TODO: To prevent overfitting or overtraining, BATCH_SIZE should increase during training
+# TODO: FOLLOW THIS PAPER: https://openreview.net/pdf?id=B1Yy1BxCZ
+
+BUFFER_SIZE = int(1000)  # replay buffer size
 # BATCH_SIZE = 64, 10 (10 is good), 5 better (the lower the better for some reason?)
-BATCH_SIZE = 5  # minibatch size
+BATCH_SIZE = 10 # minibatch size
 GAMMA = 0.99  # discount factor
 TAU = 1e-3  # for soft update of target parameters
-LR = 5e-4  # learning rate
-UPDATE_EVERY = 1000  # how often to update the network
+LR = 5e-4 # learning rate
+UPDATE_EVERY = 5  # how often to update the network
 
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
@@ -22,6 +29,7 @@ class Agent():
 
     def __init__(self, state_size, action_size, seed):
         """Initialize an Agent object.
+
         Params
         ======
             state_size (int): dimension of each state
@@ -32,11 +40,12 @@ class Agent():
         self.action_size = action_size
         self.seed = random.seed(seed)
 
+        self.LR = LR
+
         # Q-Network
         self.qnetwork_local = QNetwork(state_size, action_size, seed).to(device)
         self.qnetwork_target = QNetwork(state_size, action_size, seed).to(device)
-        #self.optimizer = optim.Adadelta(self.qnetwork_local.parameters(), lr=LR)
-        self.optimizer = optim.Adam(self.qnetwork_local.parameters(), lr=LR)
+        self.optimizer = optim.Adam(self.qnetwork_local.parameters(), lr=self.LR)
 
         # Replay memory
         self.memory = ReplayBuffer(action_size, BUFFER_SIZE, BATCH_SIZE, seed)
@@ -141,6 +150,7 @@ class ReplayBuffer:
     def sample(self):
         """Randomly sample a batch of experiences from memory."""
         experiences = random.sample(self.memory, k=self.batch_size)
+
         states = torch.from_numpy(np.vstack([e.state for e in experiences if e is not None])).float().to(device)
         actions = torch.from_numpy(np.vstack([e.action for e in experiences if e is not None])).long().to(device)
         rewards = torch.from_numpy(np.vstack([e.reward for e in experiences if e is not None])).float().to(device)
