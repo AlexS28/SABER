@@ -45,3 +45,13 @@ print('saving map in maps folder')
 time.sleep(5)
 print('restarting all nodes for data collection')
 os.popen('sh save_map.sh')
+
+
+try:
+    sys.stdout.close()
+except:
+    pass
+try:
+    sys.stderr.close()
+except:
+    pass

@@ -58,6 +58,8 @@ for i in range(0, len(goal_points)):
 # saving dataset into the data_collection folder
 #dataset, ind = np.unique(dataset, axis=0, return_index=True)
 #dataset = dataset[np.argsort(ind)]
+if not os.path.isdir("data_collection"):
+    os.makedirs("data_collection")
 dataset = np.delete(dataset, 0, 0)
 np.savetxt("data_collection/dataset2.csv", dataset, delimiter=",")
 print("DATA COLLECTION COMPLETE: PLEASE CLOSE GAZEBO WINDOW THROUGH TERMINAL")
