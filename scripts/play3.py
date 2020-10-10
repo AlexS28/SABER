@@ -1,4 +1,6 @@
-from MPC_ugv_Simple import *
+#!/usr/bin/env python
+
+from sabr_pkg.MPC_ugv_Simple import *
 import time
 import os
 

@@ -12,6 +12,8 @@ find_package(catkin REQUIRED COMPONENTS
 
 find_package(gazebo REQUIRED)
 
+catkin_python_setup()
+
 #add_message_files(
 #  FILES
 #  type1.msg
@@ -50,6 +52,6 @@ install(DIRECTORY worlds
 
 catkin_install_python(PROGRAMS scripts/play2.py
                                scripts/play3.py
-                               src/sabr_mpc/MPC_ugv_Simple.py
-                               src/sabr_mpc/ROS_interface.py
+                               src/sabr_pkg/MPC_ugv_Simple.py
+                               src/sabr_pkg/ROS_interface.py
                                DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION})
