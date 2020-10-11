@@ -26,7 +26,7 @@ index = num_models
 
 
 
-index = 7
+index = 1
 
 model = QNetwork(state_size=(len(OBSTACLE_X)+1)*2, action_size=81, seed=0).to(device)
 model.load_state_dict(torch.load('dqn_models{}checkpoint{}.pth'.format('/', index)))
@@ -39,7 +39,7 @@ for t in range(max_t):
     next_state, _, done, _ = env.step(action)
     state = next_state
     env.render()
-    time.sleep(.1)
+    time.sleep(.5)
 
 
 
