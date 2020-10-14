@@ -7,13 +7,12 @@ import cv2
 from PIL import Image
 from sklearn.utils.extmath import cartesian
 
-
 class dqnEnv(gym.Env):
   metadata = {'render.modes': ['human']}
 
   # reward parameters
   #MOVE_REWARD = 1
-  ROBOT_VISION_DISTANCE = 2
+  ROBOT_VISION_DISTANCE = 15
   OBSTACLE_COLLISION_PENALTY = 100
   GOAL_REWARD = 100
   def __init__(self):
@@ -23,7 +22,7 @@ class dqnEnv(gym.Env):
               "seen_obstacle": (0, 0, 255),
               "drone": (255, 0, 255)}
 
-  def init(self, xr, yr, gxr, gyr, xd, yd, gxd, gyd, map_size, obstacles_x, obstacles_y):
+  def init(self, xr, yr, gxr, gyr, xd, yd, gxd, gyd, map_size, obstacles_x, obstacles_y, randomize):
     self.xr_start = xr
     self.yr_start = yr
     self.xr = xr
@@ -45,6 +44,7 @@ class dqnEnv(gym.Env):
     self.max_r = self.next_state[0]
     self.max_d = self.next_state[1]
     self.size = map_size
+    self.randomize = randomize
     # each robot has 9 possible actions, two robots simultaneously --> 9x9 = 81 actions
     self.actions = cartesian(([-1,0,1],[-1,0,1],[-1,0,1],[-1,0,1]))
     # termination state for ground robot r and drone robot d
@@ -143,9 +143,16 @@ class dqnEnv(gym.Env):
       self.obstacles = []
       self.unseen_obstacles = []
       for i in range(self.NUM_OBSTACLES):
-        new_obstacle = self.Blob(self.OBSTACLE_X[i], self.OBSTACLE_Y[i])
-        self.obstacles.append(new_obstacle)
-        self.unseen_obstacles.append(new_obstacle)
+          if self.randomize:
+            x = np.random.randint(2, self.size-2)
+            y = np.random.randint(2, self.size-2)
+            new_obstacle = self.Blob(x, y)
+            self.obstacles.append(new_obstacle)
+            self.unseen_obstacles.append(new_obstacle)
+          else:
+            new_obstacle = self.Blob(self.OBSTACLE_X[i], self.OBSTACLE_Y[i])
+            self.obstacles.append(new_obstacle)
+            self.unseen_obstacles.append(new_obstacle)
       self.seen_obstacles = []
       self.episode_step = 0
       self.next_state = np.zeros(((self.NUM_OBSTACLES+1)*2, ))

@@ -1,9 +1,7 @@
 import numpy as np
 import random
 from collections import namedtuple, deque
-
 from DQN_SABR.model import QNetwork
-
 import torch
 import torch.nn.functional as F
 import torch.optim as optim
@@ -12,13 +10,14 @@ import torch.optim as optim
 #int(50000), batch = 1000, GAMMA = 0.9, TAU=1e-3, LR=0.5, UPDATE=5 (max achieved at 7100 Episodes)
 # TODO: To prevent overfitting or overtraining, BATCH_SIZE should increase during training
 # TODO: FOLLOW THIS PAPER: https://openreview.net/pdf?id=B1Yy1BxCZ
+
 #50000
 BUFFER_SIZE = int(50000)  # replay buffer size
 # BATCH_SIZE = 64, 10 (10 is good), 5 better (the lower the better for some reason?)
 BATCH_SIZE = 1000 # minibatch size
 GAMMA = 0.99  # discount factor
-TAU = 1e-3  # for soft update of target parameters
-LR = 5e-4 # learning rate
+TAU = 1e-3  # for soft update of target parameters 0.1
+LR = 5e-4 # learning rate 0.5 (THEN TRY WITH MORE RANDOMNESS)
 # 100 was before
 UPDATE_EVERY = 100  # how often to update the network
 
@@ -123,7 +122,6 @@ class Agent():
         """
         for target_param, local_param in zip(target_model.parameters(), local_model.parameters()):
             target_param.data.copy_(tau * local_param.data + (1.0 - tau) * target_param.data)
-
 
 class ReplayBuffer:
     """Fixed-size buffer to store experience tuples."""
