@@ -25,7 +25,7 @@ num_datasets = 2
 # number of timesteps per sample.
 num_timesteps = 50
 # number of epochs used for training
-EPOCHS = 2000
+EPOCHS = 30000
 # indicate whether dataset is from lidar scans or rgbd, default is lidar
 lidar = True
 
@@ -92,7 +92,6 @@ print("Data Successfully Concatenated.")
 ###################################
 
 ACTIVATION_1 = 'relu'
-
 model = tf.keras.Sequential()
 model.add(layers.SimpleRNN(256, input_shape=(num_timesteps, num_features), activation=ACTIVATION_1, return_sequences=True))
 #model.add(layers.Dropout(0.2))
@@ -118,7 +117,7 @@ history = model.fit(train_inputsFinal, train_outputsFinal, batch_size=32, epochs
 if lidar:
     model_name = "rnn_models/pf_SLAM.h5"
 else:
-    model_name = "rnn_mdels/vio_SLAM.h5"
+    model_name = "rnn_models/vio_SLAM.h5"
 
 model.save(model_name)
 
@@ -191,3 +190,12 @@ plt.plot(RNN_output[:,3])
 plt.legend(["Truth", "Prediction"])
 plt.title("Truth vs Prediction Covariances, yy")
 plt.show()
+
+# save the different between truth and prediction for evaluation of constant difference (if it exists)
+exx = truth_output[:,0]-RNN_output[:,0]
+exy = truth_output[:,1]-RNN_output[:,1]
+eyx = truth_output[:,2]-RNN_output[:,2]
+eyy = truth_output[:,3]-RNN_output[:,3]
+
+error_dataset = np.vstack((exx, exy, eyx, eyy)).reshape(exx.shape[0], 4)
+np.savetxt("ErrorDataset_rnn.csv", error_dataset, delimiter=",", header="xx, xy, yx, yy")
