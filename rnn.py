@@ -25,7 +25,7 @@ num_datasets = 2
 # number of timesteps per sample.
 num_timesteps = 50
 # number of epochs used for training
-EPOCHS = 30000
+EPOCHS = 5
 # indicate whether dataset is from lidar scans or rgbd, default is lidar
 lidar = True
 
@@ -84,7 +84,7 @@ for i in range(0, num_samples):
 
 ##Save Scaler##
 from pickle import dump
-#dump(output_scaler, open('rnn_models/covariance_scaler.pkl', 'wb'))
+dump(output_scaler, open('rnn_models/covariance_scalar.pkl', 'wb'))
 print("Data Successfully Concatenated.")
 
 ###################################
@@ -127,7 +127,7 @@ model.save(model_name)
 import matplotlib.pyplot as plt
 
 # Plot training & validation accuracy values
-plt.plot(history.history['accuracy'])
+plt.plot(history.history['acc'])
 #plt.plot(history.history['val_accuracy'])
 plt.title('Model accuracy')
 plt.ylabel('Accuracy')
@@ -149,13 +149,12 @@ plt.show()
 ###################################
 
 ####### THIS CODE IS USED TO MAKE PREDICTIONS #######
-from keras.models import load_model
-model = load_model(model_name)
+model = tf.keras.models.load_model(model_name)
 
 RNN_output = np.zeros((num_samples, num_timesteps, 4))
 for i in range(0, num_samples):
-    MPC_Generated_Measurements = train_inputsFinal[i, :, :]
-    RNN_input = MPC_Generated_Measurements[np.newaxis,:]
+    Measurements = train_inputsFinal[i, :, :]
+    RNN_input = Measurements[np.newaxis,:]
     RNN_output_predict = model.predict(RNN_input)[0]
     RNN_output[i,:,:] = RNN_output_predict
 
