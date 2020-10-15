@@ -173,8 +173,9 @@ class SMPC_UGV_Planner():
 
              self.opti.subject_to(self.X[:,k + 1] == next_state)
 
-        # initialize obstacles, animate them, and also constrain them for the MPC
-        self.init_obstacles(self.obs, self.animate)
+        if self.obs:
+            # initialize obstacles, animate them, and also constrain them for the MPC
+            self.init_obstacles(self.obs, self.animate)
 
         # initialize the objective function into the solver
         self.opti.minimize(self.objFunc)
@@ -412,7 +413,10 @@ class SMPC_UGV_Planner():
         OT_Boolvector_X = [0]*self.X.size()[0]*self.X.size()[1]
         OT_Boolvector_U = [0]*self.U.size()[0]*self.U.size()[1]
         OT_Boolvector_Slack = [0]*self.slack.size()[0]*self.slack.size()[1]
-        OT_Boolvector_Int = [1] * self.I.size()[0] * self.I.size()[1]
+        if self.obs:
+            OT_Boolvector_Int = [1] * self.I.size()[0] * self.I.size()[1]
+        else:
+            OT_Boolvector_Int = []
         OT_Boolvector = OT_Boolvector_X + OT_Boolvector_U + OT_Boolvector_Slack + OT_Boolvector_Int
 
         opts = {'bonmin.warm_start': 'interior_point', 'discrete': OT_Boolvector, 'error_on_fail': True, 'bonmin.time_limit': 1.0,
@@ -646,24 +650,24 @@ class SMPC_UGV_Planner():
         # graph direction of the robot heading
         self.ax.quiver(curr_pos[0], curr_pos[1], 0, x_togo, y_togo, 0, color='red', alpha=.8, lw=3)
 
-        # graph polygon obstacles
-        for i in range(0, len(self.x_list)):
-            verts = [list(zip(self.x_list[i], self.y_list[i], self.z_list[i]))]
-            self.ax.add_collection3d(Poly3DCollection(verts))
+        if self.obs:
+            # graph polygon obstacles
+            for i in range(0, len(self.x_list)):
+                verts = [list(zip(self.x_list[i], self.y_list[i], self.z_list[i]))]
+                self.ax.add_collection3d(Poly3DCollection(verts))
 
         # graph circle obstacles
         # Draw a circle on the z=0
-        for i in range(1, len(self.obs) + 1):
-            if self.obs[i]['polygon_type'] == 1:
-                center = self.obs[i]['vertices'][0]
-                size = self.obs[i]['size']
+            for i in range(1, len(self.obs) + 1):
+                if self.obs[i]['polygon_type'] == 1:
+                    center = self.obs[i]['vertices'][0]
+                    size = self.obs[i]['size']
 
-                height = np.linspace(0, 8, num=100)
-                for j in range(0, len(height)):
-                    q = Circle((center[0], center[1]), size, color='green')
-                    self.ax.add_patch(q)
-                    art3d.pathpatch_2d_to_3d(q, z=height[j], zdir="z")
-
+                    height = np.linspace(0, 8, num=100)
+                    for j in range(0, len(height)):
+                        q = Circle((center[0], center[1]), size, color='green')
+                        self.ax.add_patch(q)
+                        art3d.pathpatch_2d_to_3d(q, z=height[j], zdir="z")
 
 
 """
@@ -699,7 +703,7 @@ if __name__ == '__main__':
         {2: {'vertices': [[6, 5], [7, 7], [8, 5.2]], 'a': [], 'slopes': [], 'intercepts': [], 'polygon_type': 3,
              'risk': 0.4}})
     obs.update(
-        {3: {'vertices': [[2, 2]], 'size': 0.5, 'polygon_type': 1, 'risk': 0.4}})
+        {3: {'vertices': [[4, 4.1]], 'size': 0.7, 'polygon_type': 1, 'risk': 0.4}})
 
 
     SMPC = SMPC_UGV_Planner(dT, mpc_horizon, curr_pos, robot_size, lb_state,

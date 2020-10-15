@@ -161,7 +161,8 @@ class SMPC_UAV_Planner():
             self.opti.subject_to(self.X[:, k + 1] == next_state)
 
         # initialize chance constraints
-        self.chance_constraints()
+        if self.obs:
+            self.chance_constraints()
         # set solver
         self.pre_solve()
 
@@ -266,6 +267,8 @@ class SMPC_UAV_Planner():
                 q = Circle((center[0], center[1]), size, color='red')
                 self.ax.add_patch(q)
                 art3d.pathpatch_2d_to_3d(q, z=0, zdir="z")
+        if self.animate:
+            plt.pause(0.001)
 
     def animate_multi_agents(self, ax, curr_pos):
         ax.set_zlim(0, 10)
@@ -342,7 +345,7 @@ if __name__ == '__main__':
     animate = True
 
     SMPC = SMPC_UAV_Planner(dT, mpc_horizon, curr_pos, lb_state,
-                            ub_state, lb_control, ub_control, Q, R, robot_size, obs, animate)
+                            ub_state, lb_control, ub_control, Q, R, robot_size, obs, animate, multi_agent=False)
 
     for i in range(0, len(goal_points)):
 
