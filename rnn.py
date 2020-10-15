@@ -23,9 +23,9 @@ num_datasets = 2
 # number of data to use per dataset (ensure each dataset has equal or more data points than this value)
 #num_dataToUse = 2445
 # number of timesteps per sample.
-num_timesteps = 50
+num_timesteps = 5
 # number of epochs used for training
-EPOCHS = 5
+EPOCHS = 20000
 # indicate whether dataset is from lidar scans or rgbd, default is lidar
 lidar = True
 
@@ -106,7 +106,6 @@ model.add(layers.SimpleRNN(32, activation=ACTIVATION_1, return_sequences=True))
 model.add(layers.SimpleRNN(16, activation=ACTIVATION_1, return_sequences=True))
 #model.add(layers.SimpleRNN(8, activation=ACTIVATION_1, return_sequences=True))
 model.add(layers.SimpleRNN(4, activation=ACTIVATION_1, return_sequences=True))
-
 
 # try either sgd or adamax
 model.compile(loss='mean_squared_error', optimizer='adamax', metrics=['accuracy'])
