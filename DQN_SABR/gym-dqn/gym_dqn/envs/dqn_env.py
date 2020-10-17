@@ -6,180 +6,192 @@ from scipy.spatial import distance
 import cv2
 from PIL import Image
 from sklearn.utils.extmath import cartesian
+import math as m
+import matplotlib.pyplot as plt
 
 class dqnEnv(gym.Env):
   metadata = {'render.modes': ['human']}
 
   # reward parameters
-  #MOVE_REWARD = 1
-  ROBOT_VISION_DISTANCE = 15
-  OBSTACLE_COLLISION_PENALTY = 100
-  GOAL_REWARD = 100
-  def __init__(self):
-    self.colors = {"robot": (255, 175, 0),
-              "goal": (0, 255, 0),
-              "unseen_obstacle": (0, 0, 75),
-              "seen_obstacle": (0, 0, 255),
-              "drone": (255, 0, 255)}
 
-  def init(self, xr, yr, gxr, gyr, xd, yd, gxd, gyd, map_size, obstacles_x, obstacles_y, randomize):
-    self.xr_start = xr
-    self.yr_start = yr
-    self.xr = xr
-    self.yr = yr
-    self.gxr = gxr
-    self.gyr = gyr
-    self.xd_start = xd
-    self.yd_start = yd
-    self.xd = xd
-    self.yd = yd
-    self.gxd = gxd
-    self.gyd = gyd
-    self.OBSTACLE_X = obstacles_x
-    self.OBSTACLE_Y = obstacles_y
-    self.NUM_OBSTACLES = len(self.OBSTACLE_X)
-    self.next_state = np.zeros(((self.NUM_OBSTACLES + 1)*2,))
-    self.next_state[0] = round(distance.euclidean((self.xr, self.yr), (self.gxr, self.gyr)),2)
-    self.next_state[1] = round(distance.euclidean((self.xd, self.yd), (self.gxd, self.gyd)),2)
+  def init(self, curr_posUGV, goal_posUGV, curr_posUAV, goal_posUAV, obstacles, SMPC_UGV, SMPC_UAV):
+    self.curr_posUGV = curr_posUGV
+    self.curr_posUAV = curr_posUAV
+    self.curr_posUGV_start = curr_posUGV
+    self.curr_posUAV_start = curr_posUAV
+    self.xr = curr_posUGV[0]
+    self.yr = curr_posUGV[1]
+    self.gxr = goal_posUGV[0]
+    self.gyr = goal_posUGV[1]
+    self.xd = curr_posUAV[0]
+    self.yd = curr_posUAV[4]
+    self.zd = curr_posUAV[8]
+    self.gxd = goal_posUAV[0]
+    self.gyd = goal_posUAV[4]
+    self.obs = obstacles
+    self.SMPC_UGV = SMPC_UGV
+    self.SMPC_UAV = SMPC_UAV
+    self.SMPC_UGV.opti.set_value(self.SMPC_UGV.r1_goal, curr_posUGV)
+    self.SMPC_UAV.opti.set_value(self.SMPC_UAV.r_goal, curr_posUAV)
+    num_obs_const = 0
+    for i in range(1, len(self.obs) + 1):
+        num_obs_const += self.obs[i]['polygon_type']
+    self.NUM_OBSTACLES = num_obs_const
+    self.next_state = np.zeros(((self.NUM_OBSTACLES*2)+3,))
+    self.next_state[0] = np.round(distance.euclidean((self.xr, self.yr), (self.gxr, self.gyr)), 2)
+    self.next_state[1] = np.round(distance.euclidean((self.xd, self.yd), (self.gxd, self.gyd)), 2)
+    self.next_state[2] = np.round(distance.euclidean((self.xd, self.yd, self.zd), (self.xr, self.yr, 0)), 2)
     self.max_r = self.next_state[0]
     self.max_d = self.next_state[1]
-    self.size = map_size
-    self.randomize = randomize
-    # each robot has 9 possible actions, two robots simultaneously --> 9x9 = 81 actions
+    # each robot has 9 possible actions, two robots simultaneously --> 9x9 = 81 actions, control up/down for drone = 83 actions
     self.actions = cartesian(([-1,0,1],[-1,0,1],[-1,0,1],[-1,0,1]))
+    self.actions = np.concatenate((self.actions, [[0,0,2,2]]), axis=0)
+    self.actions = np.concatenate((self.actions, [[0,0,-2,-2]]), axis=0)
     # termination state for ground robot r and drone robot d
     self.done = False
-    self.done_r = False
-    self.done_d = False
     # reward for ground robot r and drone robot d
     self.reward_step = 0
     self.reward = 0
     self.step_number = 0
-
-  class Blob:
-    def __init__(self, x, y):
-      self.x = x
-      self.y = y
+    self.max_steps = 5
+    self.dist_factor = 5
+    self.solver_failure = 0
+    self.ROBOT_VISION_DISTANCE = 15
+    self.OBSTACLE_COLLISION_PENALTY = 100
+    self.GOAL_REWARD = 100
+    self.SOLVER_FAIL_PENALTY = 100
+    self.COMMUNICATION_RANGE_PENALTY = 100
+    self.episode_steps = 0
 
   def step(self, action):
       # termination state for ground robot r and drone robot d
-      self.done_r = False
-      self.done_d = False
       self.done = False
       self.reward = 0
+      self.step_number = 0
 
       # choose action
       chosen_action = self.actions[action]
 
-      # move both robots
-      self.move(xr = chosen_action[0], yr = chosen_action[1], xd = chosen_action[2], yd = chosen_action[3])
+      # set local target positions for both robots
+      self.target(xr = chosen_action[0], yr = chosen_action[1], xd = chosen_action[2], yd = chosen_action[3])
 
-      # check for new seen obstacles within (robot vision range) - This only serves for visualization purposes
-      for obstacle in self.unseen_obstacles:
-          ugv_to_obstacle = round(distance.euclidean((self.xr, self.yr), (obstacle.x, obstacle.y)),1)
-          uav_to_obstacle = round(distance.euclidean((self.xd, self.yd), (obstacle.x, obstacle.y)),1)
-          if self.ROBOT_VISION_DISTANCE >= ugv_to_obstacle or self.ROBOT_VISION_DISTANCE >= uav_to_obstacle:
-              self.seen_obstacles.append(obstacle)
-              self.unseen_obstacles.remove(obstacle)
+      # run SMPC for both robots for max_steps, then collect rewards
+      while self.step_number < self.max_steps:
+          try:
+            solUGV = self.SMPC_UGV.opti.solve()
+            x = solUGV.value(self.SMPC_UGV.X)[:, 1]
+            self.curr_posUGV = np.array(x).reshape(3, 1)
+            self.SMPC_UGV.check_obstacles(np.concatenate((self.curr_posUGV[0], self.curr_posUGV[1], [0])))
+          except:
+            u = np.zeros((2,))
+            x = self.SMPC_UGV.next_state_nominal(self.curr_posUGV, u)
+            self.curr_posUGV = np.array(x).reshape(3, 1)
+            self.reward -= self.SOLVER_FAIL_PENALTY
+            self.solver_failure += 1
 
-      for i in range(0, len(self.obstacles)):
-            self.next_state[i + 2] = round(
-                distance.euclidean((self.xr, self.yr), (self.obstacles[i].x, self.obstacles[i].y)),2)
-            self.next_state[i + 2 + self.NUM_OBSTACLES] = round(
-                distance.euclidean((self.xd, self.yd), (self.obstacles[i].x, self.obstacles[i].y)),2)
+          self.SMPC_UGV.opti.set_value(self.SMPC_UGV.r1_pos, x)
 
-      self.next_state[0] = round(distance.euclidean((self.xr, self.yr), (self.gxr, self.gyr)),2)
-      self.next_state[1] = round(distance.euclidean((self.xd, self.yd), (self.gxd, self.gyd)),2)
+          try:
+              solUAV = self.SMPC_UAV.opti.solve()
+              x = solUAV.value(self.SMPC_UAV.X)[:, 1]
+              self.curr_posUAV = np.array(x).reshape(10, 1)
+              self.SMPC_UAV.check_obstacles(np.concatenate((self.curr_posUAV[0], self.curr_posUAV[4], self.curr_posUAV[8])))
+          except:
+              u = np.zeros((3,))
+              x = self.SMPC_UAV.next_state_nominal(self.curr_posUAV, u)
+              self.curr_posUAV = np.array(x).reshape(10, 1)
+              self.reward -= self.SOLVER_FAIL_PENALTY
+              self.solver_failure += 1
 
-      # punish either robot or drone if colliding into obstacle
-      for obstacle in self.obstacles:
-        if self.xr == obstacle.x and self.yr == obstacle.y:
-            self.reward -= self.OBSTACLE_COLLISION_PENALTY
-            self.done = True
-        if self.xd == obstacle.x and self.yd == obstacle.y:
-            self.reward -= self.OBSTACLE_COLLISION_PENALTY
-            self.done = True
+          self.SMPC_UAV.opti.set_value(self.SMPC_UAV.r_pos, x)
+          self.step_number += 1
 
-      if not self.done and ((self.xr == self.gxr and self.yr == self.gyr) or (self.xd == self.gxd and self.yd == self.gyd)):
+      # update current position to be used by the DQN
+      self.xr = self.curr_posUGV[0][0]
+      self.yr = self.curr_posUGV[1][0]
+      self.xd = self.curr_posUAV[0][0]
+      self.yd = self.curr_posUAV[4][0]
+      self.zd = self.curr_posUAV[8][0]
+
+      # reward if either one or both of the robots are at the goal
+      if not self.done and (m.sqrt((self.xr - self.gxr)**2 + (self.yr-self.gyr)**2) < 0.5 or m.sqrt((
+            self.xd-self.gxd)**2 + (self.yd-self.gyd)**2) < 0.5):
             self.reward += self.GOAL_REWARD
-      if not self.done and ((self.xr == self.gxr and self.yr == self.gyr) and (self.xd == self.gxd and self.yd == self.gyd)):
-            self.reward += 4*self.GOAL_REWARD
+      if not self.done and (m.sqrt((self.xr - self.gxr)**2 + (self.yr - self.gyr)**2) < 0.5 or m.sqrt((
+            self.xd - self.gxd)**2 + (self.yd - self.gyd)**2) < 0.5):
+            self.reward += self.GOAL_REWARD*4
+            self.done = True
+
+      # punish if the UAV and UAV are too far apart
+      if np.round(distance.euclidean((self.xd, self.yd, self.zd), (self.xr, self.yr, 0)), 2) < 2 or np.round(
+              distance.euclidean((self.xd, self.yd, self.zd), (self.xr, self.yr, 0)), 2) > 6:
+          self.reward -= self.COMMUNICATION_RANGE_PENALTY
+          #self.done = True
+
+      # punish if there are too many solver failures
+      if self.solver_failure > 10:
+          self.done = True
+          self.reward -= 1000
+
+      # update the DQN states
+      self.next_state[0] = np.round(distance.euclidean((self.xr, self.yr), (self.gxr, self.gyr)), 2)
+      self.next_state[1] = np.round(distance.euclidean((self.xd, self.yd), (self.gxd, self.gyd)), 2)
+      self.next_state[2] = np.round(distance.euclidean((self.xd, self.yd, self.zd), (self.xr, self.yr, 0)), 2)
+      self.next_state[3:3+self.NUM_OBSTACLES] = self.SMPC_UGV.dqn_states
+      self.next_state[3+self.NUM_OBSTACLES:] = self.SMPC_UAV.dqn_states
 
       self.reward_step -= 1
-      if self.step_number > 50:
+      if self.episode_steps > 40:
           self.reward += self.reward_step
 
       return self.next_state, self.reward, self.done, {}
 
-  def move(self, xr, yr, xd, yd):
+  def target(self, xr, yr, xd, yd):
 
-      self.xr += xr
-      self.yr += yr
-      self.xd += xd
-      self.yd += yd
+        if np.abs(xd) != 2:
+            self.xr_target = (self.xr + self.dist_factor*xr)
+            self.yr_target = (self.yr + self.dist_factor*yr)
+            self.xd_target = (self.xd + self.dist_factor*xd)
+            self.yd_target = (self.yd + self.dist_factor*yd)
+            goal_posUGV = np.array([self.xr_target, self.yr_target, 0])
+            goal_posUAV = np.array([self.xd_target, 0, 0, 0, self.yd_target, 0, 0, 0, self.zd, 0])
+            self.SMPC_UGV.opti.set_value(self.SMPC_UGV.r1_goal, goal_posUGV)
+            self.SMPC_UAV.opti.set_value(self.SMPC_UAV.r_goal, goal_posUAV)
 
-      # If we are out of bounds, fix!
-      if self.xr < 0:
-        self.xr = 0
-      elif self.xr > self.size-1:
-        self.xr = self.size-1
-      if self.yr < 0:
-        self.yr = 0
-      elif self.yr > self.size-1:
-        self.yr = self.size-1
+        else:
+            self.zd = self.zd*xd/2
+            goal_posUAV = np.array([self.xd_target, 0, 0, 0, self.yd_target, 0, 0, 0, self.zd, 0])
+            self.SMPC_UAV.opti.set_value(self.SMPC_UAV.r_goal, goal_posUAV)
 
-      if self.xd < 0:
-        self.xd = 0
-      elif self.xd > self.size-1:
-        self.xd = self.size-1
-      if self.yd < 0:
-        self.yd = 0
-      elif self.yd > self.size-1:
-        self.yd = self.size-1
 
   def reset(self):
-      self.xr, self.yr = self.xr_start, self.yr_start
-      self.xd, self.yd = self.xd_start, self.yd_start
-      self.obstacles = []
-      self.unseen_obstacles = []
-      for i in range(self.NUM_OBSTACLES):
-          if self.randomize:
-            x = np.random.randint(2, self.size-2)
-            y = np.random.randint(2, self.size-2)
-            new_obstacle = self.Blob(x, y)
-            self.obstacles.append(new_obstacle)
-            self.unseen_obstacles.append(new_obstacle)
-          else:
-            new_obstacle = self.Blob(self.OBSTACLE_X[i], self.OBSTACLE_Y[i])
-            self.obstacles.append(new_obstacle)
-            self.unseen_obstacles.append(new_obstacle)
-      self.seen_obstacles = []
-      self.episode_step = 0
-      self.next_state = np.zeros(((self.NUM_OBSTACLES+1)*2, ))
-      self.next_state[0] = round(distance.euclidean((self.xr, self.yr), (self.gxr, self.gyr)),2)
-      self.next_state[1] = round(distance.euclidean((self.xd, self.yd), (self.gxd, self.gyd)),2)
+
+      self.curr_posUGV = self.curr_posUGV_start
+      self.curr_posUAV = self.curr_posUAV_start
+      self.SMPC_UGV.opti.set_value(self.SMPC_UGV.r1_pos, self.curr_posUGV)
+      self.SMPC_UAV.opti.set_value(self.SMPC_UAV.r_pos, self.curr_posUAV)
+      self.xr = self.curr_posUGV[0][0]
+      self.yr = self.curr_posUGV[1][0]
+      self.xd = self.curr_posUAV[0][0]
+      self.yd = self.curr_posUAV[4][0]
+      self.zd = self.curr_posUAV[8][0]
+      self.SMPC_UGV.opti.set_value(self.SMPC_UGV.r1_goal, self.curr_posUGV)
+      self.SMPC_UAV.opti.set_value(self.SMPC_UAV.r_goal, self.curr_posUAV)
+      self.done = False
       # reward for ground robot r and drone robot d
+      self.reward_step = 0
       self.reward = 0
       self.step_number = 0
-      self.reward_step = 0
+      self.solver_failure = 0
+      self.next_state = np.zeros(((self.NUM_OBSTACLES * 2) + 3,))
+      self.next_state[0] = np.round(distance.euclidean((self.xr, self.yr), (self.gxr, self.gyr)), 2)
+      self.next_state[1] = np.round(distance.euclidean((self.xd, self.yd), (self.gxd, self.gyd)), 2)
+      self.next_state[2] = np.round(distance.euclidean((self.xd, self.yd, self.zd), (self.xr, self.yr, 0)), 2)
+
       return self.next_state
 
   def render(self, mode='human', close=False):
-    img = self.get_image()
-    img = img.resize((300, 300))  # resizing so we can see our agent in all its glory.
-    cv2.imshow("image", np.array(img))  # show it!
-    cv2.waitKey(1)
-
-  def get_image(self):
-    env = np.zeros((self.size, self.size, 3), dtype=np.uint8)  # starts an rbg of our size
-    env[self.xr][self.yr] = self.colors["robot"]  # sets the robot tile to blue
-    env[self.gxr][self.gyr] = self.colors["goal"]  # sets the goal location tile to green color
-    env[self.xd][self.yd] = self.colors["drone"]  # sets the robot tile to blue
-    env[self.gxd][self.gyd] = self.colors["goal"]
-    # for obstacle in self.unseen_obstacles:
-    # env[obstacle.x][obstacle.y] = self.colors["unseen_obstacle"]  # sets the obstacle locations to dark red
-    for obstacle in self.seen_obstacles:
-      env[obstacle.x][obstacle.y] = self.colors["seen_obstacle"]  # sets the seen obstacle locations to bright red
-
-    img = Image.fromarray(env, 'RGB')  # reading to rgb. Apparently. Even tho color definitions are bgr. ???
-    return img
+    self.SMPC_UGV.animate(self.curr_posUGV)
+    self.SMPC_UAV.animate_multi_agents(self.SMPC_UGV.ax, self.curr_posUAV)
+    plt.show()
+    plt.pause(0.001)

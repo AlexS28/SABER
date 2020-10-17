@@ -7,25 +7,85 @@ import numpy as np
 from collections import deque
 import matplotlib.pyplot as plt
 import torch.optim as optim
+import numpy as np
+from SMPC_uav import *
+from SMPC_ugv import *
+
+# SMPC setup for UAV and UGV
+
+# initialize obstacles
+obs = {1: {'vertices': [[-3.01, -1,0], [-3.02, 1.03,0], [3,1,0], [3.02, -1.05,0]], 'a': [], 'slopes': [], 'intercepts': [],
+               'polygon_type': 4, 'risk': 0.1}}
+
+# initialize prediction horizon and discretized time, and whether to animate
+dT = 0.5
+mpc_horizon = 5
+animate = True
+
+# initialize SMPC parameters for the UGV
+curr_posUGV = np.array([0, -5, 0]).reshape(3,1)
+goal_posUGV = np.array([0, 5, 0])
+robot_size = 0.5
+lb_state = np.array([[-8], [-8], [-2*np.pi]], dtype=float)
+ub_state = np.array([[8], [8], [2*np.pi]], dtype=float)
+lb_control = np.array([[-1.5], [-np.pi/2]], dtype=float)
+ub_control = np.array([[1.5], [np.pi/2]], dtype=float)
+Q = np.array([[1, 0, 0], [0, 1, 0], [0, 0, 1]])
+R_init = np.array([[1, 0, 0], [0, 1, 0] ,[0, 0, 0.001]])
+angle_noise_r1 = 0.0
+angle_noise_r2 = 0.0
+relative_measurement_noise_cov = np.array([[0.0,0], [0,0.0]])
+maxComm_distance = -10
+failure_count = 0
+
+
+SMPC_UGV = SMPC_UGV_Planner(dT, mpc_horizon, curr_posUGV, robot_size, lb_state,
+                            ub_state, lb_control, ub_control, Q, R_init, angle_noise_r1, angle_noise_r2,
+                            relative_measurement_noise_cov, maxComm_distance, obs, animate)
+
+# initialize SMPC parameters for the UAV
+curr_posUAV = np.array([0,0,0,0,-5,0,0,0,4,0]).reshape(10,1)
+goal_posUAV = np.array([0,0,0,0,5,0,0,0,4,0])
+robot_size = 0.5
+vel_limit = 2
+lb_state = np.array(
+        [[-8], [-vel_limit], [-10**10], [-10**10], [-8], [-vel_limit], [-10**10], [-10**10], [2],
+         [-vel_limit]], dtype=float)
+ub_state = np.array(
+        [[8], [vel_limit], [10**10], [10**10], [8], [vel_limit], [10**10], [10**10], [10], [vel_limit]],
+        dtype=float)
+lb_control = np.array([[-1], [-1], [-1]], dtype=float)
+ub_control = np.array([[1], [1], [1]], dtype=float)
+
+Q = np.array([[1,0,0,0,0,0,0,0,0,0],
+                          [0,1,0,0,0,0,0,0,0,0],
+                          [0,0,1,0,0,0,0,0,0,0],
+                           [0,0,0,1,0,0,0,0,0,0],
+                           [0,0,0,0,1,0,0,0,0,0],
+                           [0,0,0,0,0,1,0,0,0,0],
+                           [0,0,0,0,0,0,1,0,0,0],
+                           [0,0,0,0,0,0,0,1,0,0],
+                           [0,0,0,0,0,0,0,0,1,0],
+                           [0,0,0,0,0,0,0,0,0,1]])
+
+R = np.array([[0.001, 0, 0], [0, 0.001, 0], [0, 0, 0.001]])
+
+# if the UAV and UGV are to be animated in the same screen, multi_agent must be set to true
+SMPC_UAV = SMPC_UAV_Planner(dT, 10, curr_posUAV, lb_state,
+                            ub_state, lb_control, ub_control, Q, R, robot_size, obs, animate, multi_agent=True)
+
+num_obs_const = 0
+for i in range(1, len(obs) + 1):
+    num_obs_const += obs[i]['polygon_type']
+NUM_OBSTACLES = num_obs_const
 
 env = gym.make('dqn-v0')
-MAP_SIZE=10
-robot_start = [0, 0]
-robot_goal = [9, 9]
-drone_start = [0, 0]
-drone_goal = [9, 9]
-#OBSTACLE_X = [5, 7, 3, 4, 6, 3, 5, 4, 2, 5, 4, 3]
-#OBSTACLE_Y = [5, 7, 4, 3, 8, 5, 4, 5, 3, 3, 4, 3]
-
-OBSTACLE_X = [5, 7, 4]
-OBSTACLE_Y = [5, 7, 4]
-
-env.init(robot_start[0], robot_start[1], robot_goal[0], robot_goal[1], drone_start[0], drone_start[1], drone_goal[0], drone_goal[1], MAP_SIZE, OBSTACLE_X, OBSTACLE_Y, True)
+env.init(curr_posUGV, goal_posUGV, curr_posUAV, goal_posUAV, obs, SMPC_UGV, SMPC_UAV)
 env.seed(0)
-agent = Agent(state_size=(len(OBSTACLE_X)+1)*2, action_size=81, seed=0)
+agent = Agent(state_size=(NUM_OBSTACLES * 2) + 3, action_size=83, seed=0)
 
 # max_t = 200, eps_.999, eps_end 0.1 (For random obstacles, eps_decay = 0.99995 seems good), otherwise use 0.9995
-def dqn(n_episodes=40000, max_t=100, eps_start=1, eps_end=0.05, eps_decay=0.99995):
+def dqn(n_episodes=40000, max_t=50, eps_start=1, eps_end=0.05, eps_decay=0.99995):
 
     """Deep Q-Learning.
     Params
@@ -59,10 +119,12 @@ def dqn(n_episodes=40000, max_t=100, eps_start=1, eps_end=0.05, eps_decay=0.9999
             agent.step(state, action, reward, next_state, done)
             state = next_state
             score += reward
-            env.step_number = t
+            env.episode_steps = t
             env.render()
+
             if done:
                 break
+
         scores_window.append(score)  # save most recent score
         scores.append(score)  # save most recent score
         eps = max(eps_end, eps_decay * eps)  # decrease epsilon
@@ -71,6 +133,7 @@ def dqn(n_episodes=40000, max_t=100, eps_start=1, eps_end=0.05, eps_decay=0.9999
             print('\rEpisode {}\tAverage Score: {:.2f}'.format(i_episode, np.mean(scores_window)))
             scores_graph.append(np.mean(scores_window))
             max_avg = np.mean(scores_window)
+
 
             if max_avg == np.max(scores_graph):
                 if index_model == number_models:
