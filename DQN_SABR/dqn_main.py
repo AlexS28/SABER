@@ -23,11 +23,11 @@ mpc_horizon = 5
 animate = True
 
 # initialize SMPC parameters for the UGV
-curr_posUGV = np.array([0, -5, 0]).reshape(3,1)
-goal_posUGV = np.array([0, 5, 0])
+curr_posUGV = np.array([0, -6, 0]).reshape(3,1)
+goal_posUGV = np.array([0, 6, 0])
 robot_size = 0.5
-lb_state = np.array([[-8], [-8], [-2*np.pi]], dtype=float)
-ub_state = np.array([[8], [8], [2*np.pi]], dtype=float)
+lb_state = np.array([[-10], [-10], [-2*np.pi]], dtype=float)
+ub_state = np.array([[10], [10], [2*np.pi]], dtype=float)
 lb_control = np.array([[-1.5], [-np.pi/2]], dtype=float)
 ub_control = np.array([[1.5], [np.pi/2]], dtype=float)
 Q = np.array([[1, 0, 0], [0, 1, 0], [0, 0, 1]])
@@ -36,7 +36,6 @@ angle_noise_r1 = 0.0
 angle_noise_r2 = 0.0
 relative_measurement_noise_cov = np.array([[0.0,0], [0,0.0]])
 maxComm_distance = -10
-failure_count = 0
 
 
 SMPC_UGV = SMPC_UGV_Planner(dT, mpc_horizon, curr_posUGV, robot_size, lb_state,
@@ -44,15 +43,15 @@ SMPC_UGV = SMPC_UGV_Planner(dT, mpc_horizon, curr_posUGV, robot_size, lb_state,
                             relative_measurement_noise_cov, maxComm_distance, obs, animate)
 
 # initialize SMPC parameters for the UAV
-curr_posUAV = np.array([0,0,0,0,-5,0,0,0,4,0]).reshape(10,1)
-goal_posUAV = np.array([0,0,0,0,5,0,0,0,4,0])
+curr_posUAV = np.array([0,0,0,0,-6,0,0,0,4,0]).reshape(10,1)
+goal_posUAV = np.array([0,0,0,0,6,0,0,0,4,0])
 robot_size = 0.5
 vel_limit = 2
 lb_state = np.array(
-        [[-8], [-vel_limit], [-10**10], [-10**10], [-8], [-vel_limit], [-10**10], [-10**10], [2],
+        [[-10], [-vel_limit], [-10**10], [-10**10], [-10], [-vel_limit], [-10**10], [-10**10], [1],
          [-vel_limit]], dtype=float)
 ub_state = np.array(
-        [[8], [vel_limit], [10**10], [10**10], [8], [vel_limit], [10**10], [10**10], [10], [vel_limit]],
+        [[10], [vel_limit], [10**10], [10**10], [10], [vel_limit], [10**10], [10**10], [10], [vel_limit]],
         dtype=float)
 lb_control = np.array([[-1], [-1], [-1]], dtype=float)
 ub_control = np.array([[1], [1], [1]], dtype=float)
@@ -85,7 +84,7 @@ env.seed(0)
 agent = Agent(state_size=(NUM_OBSTACLES * 2) + 3, action_size=83, seed=0)
 
 # max_t = 200, eps_.999, eps_end 0.1 (For random obstacles, eps_decay = 0.99995 seems good), otherwise use 0.9995
-def dqn(n_episodes=40000, max_t=50, eps_start=1, eps_end=0.05, eps_decay=0.99995):
+def dqn(n_episodes=20000, max_t=100, eps_start=1, eps_end=0.05, eps_decay=0.99995):
 
     """Deep Q-Learning.
     Params
@@ -129,7 +128,7 @@ def dqn(n_episodes=40000, max_t=50, eps_start=1, eps_end=0.05, eps_decay=0.99995
         scores.append(score)  # save most recent score
         eps = max(eps_end, eps_decay * eps)  # decrease epsilon
         print('\rEpisode {}\tAverage Score: {:.2f}'.format(i_episode, np.mean(scores_window)), end="")
-        if i_episode % 50 == 0:
+        if i_episode % 10 == 0:
             print('\rEpisode {}\tAverage Score: {:.2f}'.format(i_episode, np.mean(scores_window)))
             scores_graph.append(np.mean(scores_window))
             max_avg = np.mean(scores_window)
@@ -150,6 +149,16 @@ def dqn(n_episodes=40000, max_t=50, eps_start=1, eps_end=0.05, eps_decay=0.99995
     return scores_graph
 
 scores_graph = dqn()
+
+
+# save datasets that track controller failure
+if not os.path.isdir("data_collection"):
+    os.makedirs("data_collection")
+
+dataset_r = np.delete(env.dataset_r, 0, 1)
+dataset_d = np.delete(env.dataset_d, 0, 1)
+np.savetxt("data_collection/dataset_r.csv", dataset_r, delimiter=",")
+np.savetxt("data_collection/dataset_d.csv", dataset_d, delimiter=",")
 
 # plot the scores
 fig = plt.figure()
