@@ -11,6 +11,11 @@ import numpy as np
 from SMPC_uav import *
 from SMPC_ugv import *
 
+
+# save datasets that track controller failure
+if not os.path.isdir("dqn_models"):
+    os.makedirs("dqn_models")
+
 # SMPC setup for UAV and UGV
 
 # initialize obstacles
@@ -120,28 +125,28 @@ def dqn(n_episodes=20000, max_t=100, eps_start=1, eps_end=0.05, eps_decay=0.9999
             score += reward
             env.episode_steps = t
             env.render()
-
             if done:
                 break
 
         scores_window.append(score)  # save most recent score
         scores.append(score)  # save most recent score
         eps = max(eps_end, eps_decay * eps)  # decrease epsilon
+
         print('\rEpisode {}\tAverage Score: {:.2f}'.format(i_episode, np.mean(scores_window)), end="")
         if i_episode % 10 == 0:
             print('\rEpisode {}\tAverage Score: {:.2f}'.format(i_episode, np.mean(scores_window)))
             scores_graph.append(np.mean(scores_window))
             max_avg = np.mean(scores_window)
 
-
             if max_avg == np.max(scores_graph):
                 if index_model == number_models:
                     index_model = 0
                 print("Model saved! maximum average reward was: {:.2f}".format(np.mean(scores_window)))
-                scores_window = []
+
                 #index_min = min(range(len(scores_window_model)), key=scores_window_model.__getitem__)
                 # saving all models from best run in a folder
                 torch.save(agent.qnetwork_local.state_dict(), 'dqn_models/checkpoint{}.pth'.format(index_model))
+                scores_window = []
                 #agent.save('dqn_models/model{}.h5'.format(index_model))
                 index_model += 1
 
@@ -150,10 +155,6 @@ def dqn(n_episodes=20000, max_t=100, eps_start=1, eps_end=0.05, eps_decay=0.9999
 
 scores_graph = dqn()
 
-
-# save datasets that track controller failure
-if not os.path.isdir("data_collection"):
-    os.makedirs("data_collection")
 
 dataset_r = np.delete(env.dataset_r, 0, 1)
 dataset_d = np.delete(env.dataset_d, 0, 1)

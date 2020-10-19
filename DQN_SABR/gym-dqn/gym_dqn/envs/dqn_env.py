@@ -58,7 +58,7 @@ class dqnEnv(gym.Env):
     self.solver_failure = 0
     self.GOAL_REWARD = 100
     self.SOLVER_FAIL_PENALTY = 100
-    self.COMMUNICATION_RANGE_PENALTY = 1000
+    self.COMMUNICATION_RANGE_PENALTY = 100
     self.STEP_PENALTY = 200
     self.episode_steps = 0
     self.ugv_done = False
@@ -66,7 +66,6 @@ class dqnEnv(gym.Env):
     # initalize datasets, these sets track the positions at which the solver fails for both the UAV and UGV
     self.dataset_r = np.zeros((2,1))
     self.dataset_d = np.zeros((2,1))
-
 
   def step(self, action):
       # termination state for ground robot r and drone robot d
@@ -137,29 +136,23 @@ class dqnEnv(gym.Env):
       self.next_state[3:3+self.NUM_OBSTACLES] = self.SMPC_UGV.dqn_states
       self.next_state[3+self.NUM_OBSTACLES:] = self.SMPC_UAV.dqn_states
 
-      # reward if closer to goal
-      #self.reward += 1 - (self.next_state[0]/self.max_r)**0.4
-      #self.reward += 1 - (self.next_state[1]/self.max_d)**0.4
-
       # reward if either one or both of the robots are at the goal. If one of the robots in the goal, that robot stops moving
       if not self.done and (self.next_state[0] < 1 or self.next_state[1] < 1):
           self.reward += self.GOAL_REWARD
 
           if self.next_state[0] < 1:
-
               self.ugv_done = True
           elif self.next_state[1] < 1:
               self.uav_done = True
 
-
       if not self.done and (self.next_state[0] < 1 and self.next_state[1] < 1):
-          self.reward += self.GOAL_REWARD * 4
+          self.reward += (101-self.episode_steps)*self.GOAL_REWARD * 4
           self.done = True
-          print('UAV and UGV made it')
 
       # punish if the UAV and UAV are too far apart
-      if self.next_state[2] < 1.5 or self.next_state[2] > 9:
+      if self.next_state[2] > 9.5:
           self.reward -= self.COMMUNICATION_RANGE_PENALTY
+          self.done = True
 
       # punish if there are too many solver failures
       if self.solver_failure > 10:
