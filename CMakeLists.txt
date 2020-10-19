@@ -46,7 +46,7 @@ install(FILES launch/sabr_gazebo_collect.launch
   DESTINATION ${CATKIN_PACKAGE_SHARE_DESTINATION}/launch)
 
 
-install(DIRECTORY worlds
+install(DIRECTORY worlds rviz
   DESTINATION ${CATKIN_PACKAGE_SHARE_DESTINATION}
   PATTERN "*~" EXCLUDE)
 
