@@ -7,7 +7,6 @@ import numpy as np
 from collections import deque
 import matplotlib.pyplot as plt
 import torch.optim as optim
-import numpy as np
 from SMPC_uav import *
 from SMPC_ugv import *
 
@@ -15,6 +14,9 @@ from SMPC_ugv import *
 # save datasets that track controller failure
 if not os.path.isdir("dqn_models"):
     os.makedirs("dqn_models")
+
+if not os.path.isdir("data_collection"):
+    os.makedirs("data_collection")
 
 # SMPC setup for UAV and UGV
 
@@ -29,7 +31,7 @@ animate = True
 
 # initialize SMPC parameters for the UGV
 curr_posUGV = np.array([0, -6, 0]).reshape(3,1)
-goal_posUGV = np.array([0, 6, 0])
+goal_posUGV = np.array([0, 7, 0])
 robot_size = 0.5
 lb_state = np.array([[-10], [-10], [-2*np.pi]], dtype=float)
 ub_state = np.array([[10], [10], [2*np.pi]], dtype=float)
@@ -49,7 +51,7 @@ SMPC_UGV = SMPC_UGV_Planner(dT, mpc_horizon, curr_posUGV, robot_size, lb_state,
 
 # initialize SMPC parameters for the UAV
 curr_posUAV = np.array([0,0,0,0,-6,0,0,0,4,0]).reshape(10,1)
-goal_posUAV = np.array([0,0,0,0,6,0,0,0,4,0])
+goal_posUAV = np.array([0,0,0,0,7,0,0,0,4,0])
 robot_size = 0.5
 vel_limit = 2
 lb_state = np.array(
@@ -154,13 +156,6 @@ def dqn(n_episodes=20000, max_t=100, eps_start=1, eps_end=0.05, eps_decay=0.9999
     return scores_graph
 
 scores_graph = dqn()
-
-
-dataset_r = np.delete(env.dataset_r, 0, 1)
-dataset_d = np.delete(env.dataset_d, 0, 1)
-np.savetxt("data_collection/dataset_r.csv", dataset_r, delimiter=",")
-np.savetxt("data_collection/dataset_d.csv", dataset_d, delimiter=",")
-
 # plot the scores
 fig = plt.figure()
 ax = fig.add_subplot(111)
@@ -169,3 +164,9 @@ plt.title('Deep Q-Learning - Average Rewards During Training')
 plt.ylabel('Average Reward')
 plt.xlabel('Per 100 Episodes')
 plt.show()
+
+dataset_r = np.delete(env.dataset_r, 0, 1)
+dataset_d = np.delete(env.dataset_d, 0, 1)
+np.savetxt("data_collection/dataset_r.csv", dataset_r, delimiter=",")
+np.savetxt("data_collection/dataset_d.csv", dataset_d, delimiter=",")
+

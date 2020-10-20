@@ -97,7 +97,7 @@ index = num_models
 
 index = 19
 model = QNetwork(state_size=(NUM_OBSTACLES * 2) + 3, action_size=83, seed=0).to(device)
-model.load_state_dict(torch.load('dqn_models/checkpoint2642.0.pth'))
+model.load_state_dict(torch.load('dqn_models/checkpoint0.pth'))
 state = env.reset()
 
 for t in range(max_t):
