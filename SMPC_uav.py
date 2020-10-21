@@ -336,7 +336,7 @@ class SMPC_UAV_Planner():
         ax.quiver(curr_pos[0], curr_pos[4], curr_pos[8], x_togo4, y_togo4, 0, color='red', alpha=.8, lw=2)
         """
 
-
+"""
 if __name__ == '__main__':
     # initialize all required variables for the SMPC solver
     dT = 0.5
@@ -395,3 +395,4 @@ if __name__ == '__main__':
             SMPC.animate(curr_pos)
             print(t)
             t+=1
+"""
