@@ -87,11 +87,11 @@ NUM_OBSTACLES = num_obs_const
 
 env = gym.make('dqn-v0')
 env.init(curr_posUGV, goal_posUGV, curr_posUAV, goal_posUAV, obs, SMPC_UGV, SMPC_UAV)
-env.seed(0)
-agent = Agent(state_size=(NUM_OBSTACLES * 2) + 3, action_size=83, seed=0)
+env.seed(123)
+agent = Agent(state_size=(NUM_OBSTACLES * 2) + 3, action_size=83, seed=123)
 
 # max_t = 200, eps_.999, eps_end 0.1 (For random obstacles, eps_decay = 0.99995 seems good), otherwise use 0.9995
-def dqn(n_episodes=20000, max_t=100, eps_start=1, eps_end=0.05, eps_decay=0.99995):
+def dqn(n_episodes=20000, max_t=100, eps_start=1, eps_end=0.05, eps_decay=0.9995):
 
     """Deep Q-Learning.
     Params
@@ -126,7 +126,7 @@ def dqn(n_episodes=20000, max_t=100, eps_start=1, eps_end=0.05, eps_decay=0.9999
             state = next_state
             score += reward
             env.episode_steps = t
-            env.render()
+            #env.render()
             if done:
                 break
 
