@@ -85,7 +85,7 @@ NUM_OBSTACLES = num_obs_const
 
 env = gym.make('dqn-v0')
 
-max_t = 100
+max_t = 50
 num_models = 11
 
 env = gym.make('dqn-v0')
@@ -97,7 +97,7 @@ index = num_models
 
 index = 19
 model = QNetwork(state_size=(NUM_OBSTACLES * 2) + 3, action_size=83, seed=0).to(device)
-model.load_state_dict(torch.load('dqn_models/checkpoint0.pth'))
+model.load_state_dict(torch.load('dqn_models/checkpoint1.pth'))
 state = env.reset()
 
 for t in range(max_t):

@@ -135,7 +135,7 @@ class dqnEnv(gym.Env):
           self.next_state[3+self.NUM_OBSTACLES:] = self.SMPC_UAV.dqn_states
 
           # reward if either one or both of the robots are at the goal. If one of the robots in the goal, that robot stops moving
-          if (self.next_state[0] <= 1.5 or self.next_state[1] <= 1.5):
+          if (self.next_state[0] <= 2 or self.next_state[1] <= 2):
             self.reward += self.GOAL_REWARD
 
             #if self.next_state[0] < 1:
