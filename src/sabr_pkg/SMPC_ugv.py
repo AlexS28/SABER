@@ -11,11 +11,12 @@ from mpl_toolkits.mplot3d import Axes3D
 from mpl_toolkits.mplot3d.art3d import Poly3DCollection
 import mpl_toolkits.mplot3d.art3d as art3d
 from matplotlib.patches import Circle
-
+from scipy.spatial import distance
 import matplotlib.pyplot as plt
 import math as m
 import control
 from scipy.stats import linregress
+from ROS_interface import *
 
 class SMPC_UGV_Planner():
 
@@ -63,7 +64,7 @@ class SMPC_UGV_Planner():
         # initialize the maximum distance that robot 1 and 2 are allowed to have for cross communication
         self.maxComm_distance = maxComm_distance
         # distance to obstacle to be used as constraints
-        self.max_obs_distance = 2
+        self.max_obs_distance = 20
         # initialize obstacles
         self.obs = obs
         # initialize robot's current position
@@ -78,6 +79,11 @@ class SMPC_UGV_Planner():
         self.first_contact = False
         # initialize state, control, and slack variables
         self.initVariables()
+        # initialize states for DQN (relative distance between robot-goal, and robot-obstacles
+        num_obs_const = 0
+        for i in range(1, len(self.obs)+1):
+            num_obs_const += self.obs[i]['polygon_type']
+        self.dqn_states = np.zeros((num_obs_const,))
         # initialize parameters for animation
         if animate:
             plt.ion()
@@ -332,16 +338,29 @@ class SMPC_UGV_Planner():
         iter = 0
         iter2 = 0
         obs_iter2 = 0
+        ind_dqn = 0
 
+        #self.dqn_states[0] = distance.euclidean((curr_pos[0], curr_pos[1]), (goal_pos[0], goal_pos[1]))
         for i in range(1, len(self.obs)+1):
 
             if self.obs[i]['polygon_type'] != 1:
-
+                break_now = False
+                ind = 0
                 for j in range(0, self.obs[i]['polygon_type']):
-                    b = self.obs[i]['intercepts'][j]
-                    m = self.obs[i]['slopes'][j]
-                    dist = self.distance_pt_line_check(m, b, curr_pos)
-                    if dist <= self.max_obs_distance:
+
+                    if ind == self.obs[i]['polygon_type']-1:
+                        a, b = np.asarray(self.obs[i]['vertices'][0]), np.asarray(self.obs[i]['vertices'][-1])
+                        dist = self.distance_pt_line_check(curr_pos, a, b)
+                        self.dqn_states[ind_dqn] = np.round(dist,2)
+                        ind_dqn +=1
+                    else:
+                        a, b = np.asarray(self.obs[i]['vertices'][ind]), np.asarray(self.obs[i]['vertices'][ind+1])
+                        dist = self.distance_pt_line_check(curr_pos, a, b)
+                        self.dqn_states[ind_dqn] = np.round(dist,2)
+                        ind_dqn +=1
+                        ind += 1
+
+                    if dist <= self.max_obs_distance and not break_now:
 
                         obs_iter1 = obs_iter2
                         obs_iter2 = obs_iter2 + self.obs_indexL[iter]
@@ -361,16 +380,18 @@ class SMPC_UGV_Planner():
                             index_slope_intercept += 1
 
                         self.opti.set_value(self.switch_obsL[iter], 1)
-                        break
-                    else:
+                        break_now = True
+                    elif dist > self.max_obs_distance and not break_now:
                         self.opti.set_value(self.switch_obsL[iter], 0)
-                        break
+
                 iter += 1
 
             else:
                 center = self.obs[i]['vertices'][0]
                 size = self.obs[i]['size']
                 dist = self.distance_pt_circle(center, curr_pos, size, self.robot_size)
+                self.dqn_states[ind_dqn] = np.round(dist,2)
+                ind_dqn += 1
                 if dist <= self.max_obs_distance:
                     a = np.array([1, 1]).reshape(2, 1)
                     r = self.obs[i]['risk']
@@ -393,15 +414,12 @@ class SMPC_UGV_Planner():
         # rotation constraints can be used to ensure that the robot is directed along the path it is moving
         gRotx = []
         gRoty = []
-
         for k in range(0, self.N):
             rhsx = (cos(self.X[2, k]) * (self.U[0, k]) + sin(self.X[2, k]) * (self.U[1, k]))
             gRotx = vertcat(gRotx, rhsx)
-
         for k in range(0, self.N):
             rhsy = (-sin(self.X[2, k]) * (self.U[0, k]) + cos(self.X[2, k]) * (self.U[1, k]))
             gRoty = vertcat(gRoty, rhsy)
-
         self.opti.subject_to(self.opti.bounded(-1.8, gRotx, 1.8))
         self.opti.subject_to(self.opti.bounded(0, gRoty, 0))
     """
@@ -420,7 +438,7 @@ class SMPC_UGV_Planner():
         OT_Boolvector = OT_Boolvector_X + OT_Boolvector_U + OT_Boolvector_Slack + OT_Boolvector_Int
 
         opts = {'bonmin.warm_start': 'interior_point', 'discrete': OT_Boolvector, 'error_on_fail': True, 'bonmin.time_limit': 1.0,
-                'bonmin.acceptable_obj_change_tol': 1e40, 'bonmin.acceptable_tol': 1e-1}
+                'bonmin.acceptable_obj_change_tol': 1e40, 'bonmin.acceptable_tol': 1e-1, 'bonmin.sb': 'yes', 'bonmin.bb_log_level':0}
 
         # create the solver
         self.opti.solver('bonmin', opts)
@@ -623,13 +641,29 @@ class SMPC_UGV_Planner():
         dist = if_else(logic_and(sign(y - point[1]) == sign(a[1]), sign(x - point[0]) == sign(a[0])), -1*d, d)
 
         return dist
-
+    """
     def distance_pt_line_check(self, slope, intercept, point):
         A = -slope
         B = 1
         C = -intercept
         dist = np.abs(A*point[0] + B*point[1] + C) / np.sqrt(A**2 + B**2)
         return dist
+    """
+    def distance_pt_line_check(self, p, a, b):
+        # normalized tangent vector
+        d = np.divide(b - a, np.linalg.norm(b - a))
+
+        # signed parallel distance components
+        s = np.dot(a - p, d)
+        t = np.dot(p - b, d)
+
+        # clamped parallel distance
+        h = np.maximum.reduce([s, t, 0])
+
+        # perpendicular distance component
+        c = np.cross(p - a, d)
+
+        return np.hypot(h, np.linalg.norm(c))
 
     def distance_pt_circle(self, center, point, obs_size, robot_size):
         # calculates the distance between the outerboundary of an obstacle and the outerboundary of the robot
@@ -638,8 +672,8 @@ class SMPC_UGV_Planner():
 
     def animate(self, curr_pos):
         plt.cla()
-        plt.xlim(0, 10)
-        plt.ylim(0, 10)
+        plt.xlim(-8, 8)
+        plt.ylim(-8, 8)
         self.ax.set_zlim(0, 10)
         # graph robot as a round sphere for simplicity
         self.ax.plot_surface(self.x_fig + curr_pos[0], self.y_fig + curr_pos[1], self.z_fig,
@@ -662,26 +696,25 @@ class SMPC_UGV_Planner():
                 if self.obs[i]['polygon_type'] == 1:
                     center = self.obs[i]['vertices'][0]
                     size = self.obs[i]['size']
+                    q = Circle((center[0], center[1]), size, color='green')
+                    self.ax.add_patch(q)
+                    art3d.pathpatch_2d_to_3d(q, z=0, zdir="z")
+                    #height = np.linspace(0, 8, num=100)
+                    #for j in range(0, len(height)):
+                    #    q = Circle((center[0], center[1]), size, color='green')
+                    #    self.ax.add_patch(q)
+                    #    art3d.pathpatch_2d_to_3d(q, z=height[j], zdir="z")
 
-                    height = np.linspace(0, 8, num=100)
-                    for j in range(0, len(height)):
-                        q = Circle((center[0], center[1]), size, color='green')
-                        self.ax.add_patch(q)
-                        art3d.pathpatch_2d_to_3d(q, z=height[j], zdir="z")
 
-
-"""
 if __name__ == '__main__':
-
     # initialize all required variables for the SMPC solver
-    dT = 0.1
-    mpc_horizon = 5
-    curr_pos = np.array([0, 0, 0]).reshape(3,1)
-    goal_points = [[10, 8, 0], [10, 0, 0]]
-
+    dT = 0.5
+    mpc_horizon = 2
+    curr_pos = np.array([0, -5, 0]).reshape(3,1)
+    goal_points = [[7, 0, 0]]
     robot_size = 0.5
-    lb_state = np.array([[-20], [-20], [-2*pi]], dtype=float)
-    ub_state = np.array([[20], [20], [2*pi]], dtype=float)
+    lb_state = np.array([[-8], [-8], [-2*pi]], dtype=float)
+    ub_state = np.array([[8], [8], [2*pi]], dtype=float)
     lb_control = np.array([[-1.5], [-np.pi/2]], dtype=float)
     ub_control = np.array([[1.5], [np.pi/2]], dtype=float)
     Q = np.array([[1, 0, 0], [0, 1, 0], [0, 0, 1]])
@@ -692,47 +725,44 @@ if __name__ == '__main__':
     maxComm_distance = -10
     animate = True
     failure_count = 0
-
     # initialize obstacles to be seen in a dictionary format. If obstacle should be represented as a circle, the
     # 'vertices' is should be a single [[x,y]] point representing the center of the circle, with 'size' equal to the
     # radius of the circle, and polygon_type: 1.
-
-    obs = {1: {'vertices': [[3.9, 4], [4, 6], [6, 6.1], [5.9, 4.1]], 'a': [], 'slopes': [], 'intercepts': [],
+    obs = {1: {'vertices': [[-3.01, -1,0], [-3.02, 1.03,0], [3,1,0], [3.02, -1.05,0]], 'a': [], 'slopes': [], 'intercepts': [],
                'polygon_type': 4, 'risk': 0.1}}
-    obs.update(
-        {2: {'vertices': [[6, 5], [7, 7], [8, 5.2]], 'a': [], 'slopes': [], 'intercepts': [], 'polygon_type': 3,
-             'risk': 0.4}})
-    obs.update(
-        {3: {'vertices': [[4, 4.1]], 'size': 0.7, 'polygon_type': 1, 'risk': 0.4}})
-
-
+    #obs.update(
+    #    {2: {'vertices': [[6, 5,0], [7, 7,0], [8, 5.2,0]], 'a': [], 'slopes': [], 'intercepts': [], 'polygon_type': 3,
+    #         'risk': 0.4}})
+    #obs.update(
+    #    {3: {'vertices': [[4, 4.1,0]], 'size': 0.7, 'polygon_type': 1, 'risk': 0.4}})
+    obs = {}
     SMPC = SMPC_UGV_Planner(dT, mpc_horizon, curr_pos, robot_size, lb_state,
                             ub_state, lb_control, ub_control, Q, R_init, angle_noise_r1, angle_noise_r2,
                             relative_measurement_noise_cov, maxComm_distance, obs, animate)
 
+    ROS = ROSInterface()
+    rospy.init_node('ros_interface')
+    rate = rospy.Rate(10)
 
     for i in range(0, len(goal_points)):
         goal_pos = np.array(goal_points[i])
         SMPC.opti.set_value(SMPC.r1_goal, goal_pos)
-
         while m.sqrt((curr_pos[0] - goal_pos[0]) ** 2 + (curr_pos[1] - goal_pos[1]) ** 2) > 0.5:
-
             try:
                 sol = SMPC.opti.solve()
-                x = sol.value(SMPC.X)[:, 1]
                 u = sol.value(SMPC.U[:, SMPC.N-1])
-                SMPC.check_obstacles(x[0:2])
-
+                ROS.send_velocity(u)
+                curr_pos = ROS.get_current_pose()
+                SMPC.check_obstacles(np.concatenate((curr_pos[0], curr_pos[1], [0])))
             except:
                 failure_count += 1
                 u = sol.value(SMPC.U[:, 0])
                 u[1] = 0
-                x = SMPC.next_state_nominal(curr_pos, u)
+                ROS.send_velocity(u)
+                curr_pos = ROS.get_current_pose()
                 print('WARNING: Solver has failed, using previous control value for next input')
-
-            curr_pos = np.array(x).reshape(3, 1)
-            SMPC.opti.set_value(SMPC.r1_pos, x)
+                SMPC.check_obstacles(np.concatenate((curr_pos[0], curr_pos[1], [0])))
+            SMPC.opti.set_value(SMPC.r1_pos, curr_pos)
             SMPC.animate(curr_pos)
-            plt.show()
-            plt.pause(0.001)
-"""
+            rate.sleep()
+

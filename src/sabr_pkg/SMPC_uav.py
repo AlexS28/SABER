@@ -1,3 +1,4 @@
+
 """FILE CREATED BY: Alexander Schperberg, aschperb@gmail.com
 Copyright by RoMeLa (Robotics and Mechanisms Laboratory, University of California, Los Angeles)"""
 
@@ -12,6 +13,7 @@ from matplotlib.patches import Circle
 import matplotlib.pyplot as plt
 import math as m
 import control
+from ROS_interface import *
 
 class SMPC_UAV_Planner():
 
@@ -38,7 +40,7 @@ class SMPC_UAV_Planner():
         # initialize obstacles
         self.obs = obs
         # distance to obstacle to be used as constraints
-        self.max_obs_distance = 5
+        self.max_obs_distance = 10
         # Q and R diagonal matrices, used for the MPC objective function, Q is 3x3, R is 4x4 (first 2 diagonals
         # represent the cost on linear and angular velocity, the next 2 diagonals represent cost on state slack,
         # and terminal slack respectively. The P diagonal matrix represents the cost on the terminal constraint.
@@ -55,7 +57,7 @@ class SMPC_UAV_Planner():
         B2 = 0.9921
         g = 9.81
         KT = 0.91
-        m = 1.3
+        m = .001 #originally 1.42
 
         self.A = np.array([[1, self.dT, (g*self.dT**2)/2, 0, 0, 0, 0, 0, 0, 0],
                           [0, 1, g*self.dT, 0, 0, 0, 0, 0, 0, 0],
@@ -234,14 +236,13 @@ class SMPC_UAV_Planner():
         opts = {'bonmin.warm_start': 'interior_point', 'discrete': OT_Boolvector, 'error_on_fail': True,
                 'bonmin.time_limit': 0.5,
                 'bonmin.acceptable_obj_change_tol': 1e40, 'bonmin.acceptable_tol': 1e-1}
-
         # create the solver
         self.opti.solver('bonmin', opts)
         """
 
         # set solver options for ipopt (nonlinear programming)
-        opts = {'ipopt': {'max_iter': 1000, 'print_level': 0, 'acceptable_tol': 10**-9,
-                      'acceptable_obj_change_tol': 10**-7}}
+        opts = {'ipopt': {'max_iter': 1000, 'print_level': 0, 'acceptable_tol': 1,
+                      'acceptable_obj_change_tol': 1}}
         opts.update({'print_time': 0})
         # create solver
         self.opti.solver('ipopt', opts)
@@ -293,34 +294,30 @@ class SMPC_UAV_Planner():
         ax.quiver(curr_pos[0], curr_pos[4], curr_pos[8], x_togo3, y_togo3, 0, color='red', alpha=.8, lw=2)
         ax.quiver(curr_pos[0], curr_pos[4], curr_pos[8], x_togo4, y_togo4, 0, color='red', alpha=.8, lw=2)
 
+
 """
 if __name__ == '__main__':
-
     # initialize all required variables for the SMPC solver
-    dT = 0.1
+    dT = 0.5
     mpc_horizon = 10
     # x, vel_x, th1, th1_vel, y, vel_y, th2, th2_vel, z, z_vel
     curr_pos = np.array([0,0,0,0,0,0,0,0,0,0]).reshape(10,1)
-    goal_points = [[11,0,0,0,11,0,0,0,0,0], [0,0,0,0,0,0,0,0,10,0]]
-
+    goal_points = [[0,0,0,0,0,0,0,0,10,0], [10,0,0,0,10,0,0,0,5,0], [0,0,0,0,0,0,0,0,5,0]]
     robot_size = 0.5
     #lb_state = np.array([[-20], [-5], [-10*(pi/180)], [-50*pi/180],[-20], [-5], [-10*(pi/180)], [-50*pi/180],[-20],[-5]], dtype=float)
     #ub_state = np.array([[20], [5], [10*(pi/180)], [50*pi/180],[20], [5], [10*(pi/180)], [50*pi/180],[20],[5]], dtype=float)
     #lb_control = np.array([[-10*pi/180], [-10*pi/180], [-10*pi/180]], dtype=float)
     #ub_control = np.array([[10*pi/180], [10*pi/180], [10*pi/180]], dtype=float)
-
     # only constraints on the states will be the velocity (this provided the most stability)
-    vel_limit = 2
+    vel_limit = 1.5
     lb_state = np.array(
-        [[-10**10], [-vel_limit], [-10**10], [-10**10], [-10**10], [-vel_limit], [-10**10], [-10**10], [-vel_limit],
-         [-10**10]], dtype=float)
+        [[-10**10], [-vel_limit], [-10**10], [-10**10], [-10**10], [-vel_limit], [-10**10], [-10**10], [-10**10],
+         [-vel_limit]], dtype=float)
     ub_state = np.array(
         [[10**10], [vel_limit], [10**10], [10**10], [10**10], [vel_limit], [10**10], [10**10], [10**10], [vel_limit]],
         dtype=float)
     lb_control = np.array([[-1], [-1], [-1]], dtype=float)
     ub_control = np.array([[1], [1], [1]], dtype=float)
-
-
     Q = np.array([[1,0,0,0,0,0,0,0,0,0],
                           [0,1,0,0,0,0,0,0,0,0],
                           [0,0,1,0,0,0,0,0,0,0],
@@ -331,7 +328,6 @@ if __name__ == '__main__':
                            [0,0,0,0,0,0,0,1,0,0],
                            [0,0,0,0,0,0,0,0,1,0],
                            [0,0,0,0,0,0,0,0,0,1]])
-
     R = np.array([[0.001, 0, 0], [0, 0.001, 0], [0, 0, 0.001]])
 
     obs = {1: {'vertices': [[3.9, 4], [4, 6], [6, 6.1], [5.9, 4.1]], 'a': [], 'slopes': [], 'intercepts': [],
@@ -340,23 +336,44 @@ if __name__ == '__main__':
         {2: {'vertices': [[6, 5], [7, 7], [8, 5.2]], 'a': [], 'slopes': [], 'intercepts': [], 'polygon_type': 3,
              'risk': 0.4}})
     obs.update(
-        {3: {'vertices': [[4, 4.1]], 'size': 0.7, 'polygon_type': 1, 'risk': 0.4}})
+        {3: {'vertices': [[4, 4]], 'size': 0.8, 'polygon_type': 1, 'risk': 0.4}})
+    obs.update(
+        {4: {'vertices': [[7, 7]], 'size': 0.8, 'polygon_type': 1, 'risk': 0.4}})
 
+    ROS = ROSInterface()
+    rospy.init_node('ros_interface')
+    rate = rospy.Rate(10)
+    ROS.send_velocityUAV([0, 0, 0, 0, 0])
+    curr_posROS = ROS.get_current_poseUAV()
+    curr_pos[0] = curr_posROS[0]
+    curr_pos[4] = curr_posROS[1]
+    curr_pos[8] = curr_posROS[2]
     animate = True
-
     SMPC = SMPC_UAV_Planner(dT, mpc_horizon, curr_pos, lb_state,
                             ub_state, lb_control, ub_control, Q, R, robot_size, obs, animate, multi_agent=False)
 
     for i in range(0, len(goal_points)):
-
         goal_pos = np.array(goal_points[i])
         SMPC.opti.set_value(SMPC.r_goal, goal_pos)
 
-        while m.sqrt((curr_pos[0] - goal_pos[0]) ** 2 + (curr_pos[4] - goal_pos[4]) ** 2 + (curr_pos[8] - goal_pos[8])**2) > 0.5:
+        while m.sqrt((curr_pos[0] - goal_pos[0]) ** 2 + (curr_pos[4] - goal_pos[4]) ** 2 + (curr_pos[8] - goal_pos[8])**2) > 0.5 and not rospy.is_shutdown():
             sol = SMPC.opti.solve()
             x = sol.value(SMPC.X)[:, 1]
+            x_vel = sol.value(SMPC.X[:, SMPC.N])
             curr_pos = np.array(x).reshape(10, 1)
-            SMPC.opti.set_value(SMPC.r_pos, x)
+            curr_pos2 = np.array(x_vel).reshape(10, 1)
+
+            ROS.send_velocityUAV([curr_pos[1], curr_pos[5], curr_pos[9], curr_pos[3], curr_pos[7]])
+            curr_posROS = ROS.get_current_poseUAV()
+            curr_pos[0] = curr_posROS[0]
+            curr_pos[4] = curr_posROS[1]
+            curr_pos[8] = curr_posROS[2]
+
+            SMPC.opti.set_value(SMPC.r_pos, curr_pos)
             SMPC.check_obstacles([curr_pos[0], curr_pos[4]])
             SMPC.animate(curr_pos)
+            rate.sleep()
+
+            if i == len(goal_points)-1 and m.sqrt((curr_pos[0] - goal_pos[0]) ** 2 + (curr_pos[4] - goal_pos[4]) ** 2 + (curr_pos[8] - goal_pos[8])**2) > 0.5:
+                ROS.send_velocityUAV([0, 0, 0, 0, 0])
 """
