@@ -10,7 +10,6 @@ import torch.optim as optim
 from SMPC_uav import *
 from SMPC_ugv import *
 
-
 # save datasets that track controller failure
 if not os.path.isdir("dqn_models"):
     os.makedirs("dqn_models")

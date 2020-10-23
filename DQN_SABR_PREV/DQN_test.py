@@ -1,11 +1,11 @@
-import torch
-from DQN_SABR_PREV.dqn_agent import Agent
-import numpy as np
-from DQN_SABR_PREV.model import QNetwork
+import gym_dqnprev
 import gym
-import gym_dqn
+from DQN_SABR_PREV.dqn_agent import Agent
+from DQN_SABR_PREV.model import QNetwork
+import torch
+import numpy as np
+import matplotlib.pyplot as plt
 import time
-from scipy.spatial import distance
 
 max_t = 100
 num_models = 11
