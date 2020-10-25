@@ -12,7 +12,7 @@ import torch.optim as optim
 # TODO: FOLLOW THIS PAPER: https://openreview.net/pdf?id=B1Yy1BxCZ
 
 #50000
-BUFFER_SIZE = int(50000)  # replay buffer size
+BUFFER_SIZE = int(1e5)  # replay buffer size
 # BATCH_SIZE = 64, 10 (10 is good), 5 better (the lower the better for some reason?)
 BATCH_SIZE = 1000 # minibatch size
 GAMMA = 0.99  # discount factor

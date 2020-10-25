@@ -64,7 +64,7 @@ class Agent():
                 experiences = self.memory.sample()
                 self.learn(experiences, GAMMA)
 
-    def act(self, state, eps=0.):
+    def act(self, state, eps):
         """Returns actions for given state as per current policy.
 
         Params

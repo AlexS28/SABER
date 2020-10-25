@@ -212,7 +212,7 @@ class SMPC_UAV_Planner():
                 center = self.obs[i]['vertices'][0]
                 size = self.obs[i]['size']
                 dist = self.distance_pt_circle(center, curr_pos, size, self.robot_size)
-                self.dqn_states[ind_dqn] = np.round(dist,2)
+                self.dqn_states[ind_dqn] = np.round(dist,0)
                 ind_dqn += 1
                 if dist <= self.max_obs_distance:
                     a = np.array([1, 1]).reshape(2, 1)
@@ -238,12 +238,12 @@ class SMPC_UAV_Planner():
                     if ind == self.obs[i]['polygon_type'] - 1:
                         a, b = np.asarray(self.obs[i]['vertices'][0]), np.asarray(self.obs[i]['vertices'][-1])
                         dist = self.distance_pt_line_check(curr_pos, a, b)
-                        self.dqn_states[ind_dqn] = np.round(dist,2)
+                        self.dqn_states[ind_dqn] = np.round(dist,0)
                         ind_dqn += 1
                     else:
                         a, b = np.asarray(self.obs[i]['vertices'][ind]), np.asarray(self.obs[i]['vertices'][ind + 1])
                         dist = self.distance_pt_line_check(curr_pos, a, b)
-                        self.dqn_states[ind_dqn] = np.round(dist,2)
+                        self.dqn_states[ind_dqn] = np.round(dist,0)
                         ind_dqn += 1
                         ind += 1
 

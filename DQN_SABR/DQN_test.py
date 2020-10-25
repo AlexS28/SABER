@@ -23,7 +23,7 @@ obs = {1: {'vertices': [[-3.01, -1,0], [-3.02, 1.03,0], [3,1,0], [3.02, -1.05,0]
                'polygon_type': 4, 'risk': 0.1}}
 
 # initialize prediction horizon and discretized time, and whether to animate
-dT = 0.5
+dT = 1
 mpc_horizon = 5
 animate = True
 
@@ -95,8 +95,8 @@ env.init(curr_posUGV, goal_posUGV, curr_posUAV, goal_posUAV, obs, SMPC_UGV, SMPC
 
 index = num_models
 
-index = 19
-model = QNetwork(state_size=(NUM_OBSTACLES * 2) + 3, action_size=83, seed=0).to(device)
+index = 0
+model = QNetwork(state_size=(NUM_OBSTACLES * 2) + 3+4, action_size=83, seed=0).to(device)
 model.load_state_dict(torch.load('dqn_models/checkpoint1.pth'))
 state = env.reset()
 

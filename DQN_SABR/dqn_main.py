@@ -7,6 +7,7 @@ import numpy as np
 from collections import deque
 import matplotlib.pyplot as plt
 import torch.optim as optim
+import pandas as pd
 from SMPC_uav import *
 from SMPC_ugv import *
 
@@ -18,13 +19,12 @@ if not os.path.isdir("data_collection"):
     os.makedirs("data_collection")
 
 # SMPC setup for UAV and UGV
-
 # initialize obstacles
 obs = {1: {'vertices': [[-3.01, -1,0], [-3.02, 1.03,0], [3,1,0], [3.02, -1.05,0]], 'a': [], 'slopes': [], 'intercepts': [],
                'polygon_type': 4, 'risk': 0.1}}
 
 # initialize prediction horizon and discretized time, and whether to animate
-dT = 0.5
+dT = 1
 mpc_horizon = 5
 animate = True
 
@@ -86,8 +86,8 @@ NUM_OBSTACLES = num_obs_const
 
 env = gym.make('dqn-v0')
 env.init(curr_posUGV, goal_posUGV, curr_posUAV, goal_posUAV, obs, SMPC_UGV, SMPC_UAV)
-env.seed(123)
-agent = Agent(state_size=(NUM_OBSTACLES * 2) + 3, action_size=83, seed=123)
+env.seed(0)
+agent = Agent(state_size=(NUM_OBSTACLES * 2) + 3+4, action_size=83, seed=0)
 
 # max_t = 200, eps_.999, eps_end 0.1 (For random obstacles, eps_decay = 0.99995 seems good), otherwise use 0.9995
 def dqn(n_episodes=20000, max_t=100, eps_start=1, eps_end=0.05, eps_decay=0.9995):
@@ -125,7 +125,7 @@ def dqn(n_episodes=20000, max_t=100, eps_start=1, eps_end=0.05, eps_decay=0.9995
             state = next_state
             score += reward
             env.episode_steps = t
-            #env.render()
+            env.render()
             if done:
                 break
 
@@ -159,6 +159,9 @@ scores_graph = dqn()
 fig = plt.figure()
 ax = fig.add_subplot(111)
 plt.plot(np.arange(len(scores_graph)), scores_graph)
+plt.plot(pd.Series(scores_graph).rolling(100).mean())
+
+
 plt.title('Deep Q-Learning - Average Rewards During Training')
 plt.ylabel('Average Reward')
 plt.xlabel('Per 100 Episodes')

@@ -35,12 +35,28 @@ class dqnEnv(gym.Env):
     for i in range(1, len(self.obs) + 1):
         num_obs_const += self.obs[i]['polygon_type']
     self.NUM_OBSTACLES = num_obs_const
-    self.next_state = np.zeros(((self.NUM_OBSTACLES*2)+3,))
-    self.next_state[0] = np.round(distance.euclidean((self.xr, self.yr), (self.gxr, self.gyr)), 2)
-    self.next_state[1] = np.round(distance.euclidean((self.xd, self.yd), (self.gxd, self.gyd)), 2)
-    self.next_state[2] = np.round(distance.euclidean((self.xd, self.yd, self.zd), (self.xr, self.yr, 0)), 2)
-    self.max_r = self.next_state[0]
-    self.max_d = self.next_state[1]
+    # for example, let's say I have 1 rectangle obstacle then my states are:
+    # [d_rg, d_dg, d_rd, d_rLine1, d_rLine2, d_rLine3, d_rLine4, d_dLine1, d_dLine2, d_dLine3, d_dLine4]
+    #self.next_state = np.zeros(((self.NUM_OBSTACLES*2)+3,))
+
+    self.next_state = np.zeros(((self.NUM_OBSTACLES*2)+3+4,))
+    self.next_state[0] = self.xr
+    self.next_state[1] = self.yr
+    self.next_state[2] = self.xd
+    self.next_state[3] = self.yd
+    self.next_state[4] = np.round(distance.euclidean((self.xr, self.yr), (self.gxr, self.gyr)), 0)
+    self.next_state[5] = np.round(distance.euclidean((self.xd, self.yd), (self.gxd, self.gyd)), 0)
+    self.next_state[6] = np.round(distance.euclidean((self.xd, self.yd, self.zd), (self.xr, self.yr, 0)), 0)
+
+    #self.next_state[0] = np.round(distance.euclidean((self.xr, self.yr), (self.gxr, self.gyr)), 0)
+    #self.next_state[1] = np.round(distance.euclidean((self.xd, self.yd), (self.gxd, self.gyd)), 0)
+    #self.next_state[2] = np.round(distance.euclidean((self.xd, self.yd, self.zd), (self.xr, self.yr, 0)), 0)
+    #self.max_r = self.next_state[0]
+    #self.max_d = self.next_state[1]
+
+    self.max_r = self.next_state[4]
+    self.max_d = self.next_state[5]
+
     # each robot has 9 possible actions, two robots simultaneously --> 9x9 = 81 actions, control up/down for drone = 83 actions
     self.actions = cartesian(([-1,0,1],[-1,0,1],[-1,0,1],[-1,0,1]))
     # adding actions that allows the drone to travel along the z-axis, either up or down
@@ -56,6 +72,7 @@ class dqnEnv(gym.Env):
     self.GOAL_REWARD = 1
     self.COMMUNICATION_RANGE_PENALTY = 1
     self.STEP_PENALTY = 1
+    self.SOLVE_FAIL_PENALTY = 1
     self.episode_steps = 0
     # initalize datasets, these sets track the positions at which the solver fails for both the UAV and UGV
     self.dataset_r = np.zeros((2,1))
@@ -87,6 +104,7 @@ class dqnEnv(gym.Env):
         x = self.SMPC_UGV.next_state_nominal(self.curr_posUGV, u)
         self.curr_posUGV = np.array(x).reshape(3, 1)
         self.solver_failure += 1
+        self.reward -= self.SOLVE_FAIL_PENALTY
 
       self.SMPC_UGV.opti.set_value(self.SMPC_UGV.r1_pos, x)
 
@@ -102,6 +120,7 @@ class dqnEnv(gym.Env):
         x = self.SMPC_UAV.next_state_nominal(self.curr_posUAV, u)
         self.curr_posUAV = np.array(x).reshape(10, 1)
         self.solver_failure += 1
+        self.reward -= self.SOLVE_FAIL_PENALTY
 
       self.SMPC_UAV.opti.set_value(self.SMPC_UAV.r_pos, x)
 
@@ -113,27 +132,38 @@ class dqnEnv(gym.Env):
       self.zd = self.curr_posUAV[8][0]
 
       # update the DQN states
-      self.next_state[0] = np.round(distance.euclidean((self.xr, self.yr), (self.gxr, self.gyr)), 2)
-      self.next_state[1] = np.round(distance.euclidean((self.xd, self.yd), (self.gxd, self.gyd)), 2)
-      self.next_state[2] = np.round(distance.euclidean((self.xd, self.yd, self.zd), (self.xr, self.yr, 0)), 2)
-      self.next_state[3:3+self.NUM_OBSTACLES] = self.SMPC_UGV.dqn_states
-      self.next_state[3+self.NUM_OBSTACLES:] = self.SMPC_UAV.dqn_states
+      #self.next_state[0] = np.round(distance.euclidean((self.xr, self.yr), (self.gxr, self.gyr)), 0)
+      #self.next_state[1] = np.round(distance.euclidean((self.xd, self.yd), (self.gxd, self.gyd)), 0)
+      #self.next_state[2] = np.round(distance.euclidean((self.xd, self.yd, self.zd), (self.xr, self.yr, 0)), 0)
+      #self.next_state[3:3+self.NUM_OBSTACLES] = self.SMPC_UGV.dqn_states
+      #self.next_state[3+self.NUM_OBSTACLES:] = self.SMPC_UAV.dqn_states
+
+      self.next_state[0] = np.round(self.xr, 0)
+      self.next_state[1] = np.round(self.yr, 0)
+      self.next_state[2] = np.round(self.xd, 0)
+      self.next_state[3] = np.round(self.yd, 0)
+      self.next_state[4] = np.round(distance.euclidean((self.xr, self.yr), (self.gxr, self.gyr)), 0)
+      self.next_state[5] = np.round(distance.euclidean((self.xd, self.yd), (self.gxd, self.gyd)), 0)
+      self.next_state[6] = np.round(distance.euclidean((self.xd, self.yd, self.zd), (self.xr, self.yr, 0)), 0)
+      self.next_state[7:7 + self.NUM_OBSTACLES] = self.SMPC_UGV.dqn_states
+      self.next_state[7+self.NUM_OBSTACLES:] = self.SMPC_UAV.dqn_states
 
       # reward if either one or both of the robots are at the goal.
-      if (self.next_state[0] <= 1.5 or self.next_state[1] <= 1.5) and self.num_goalRewards <= 5:
+      if (self.next_state[4] <= 2 or self.next_state[5] <= 2):
         self.reward += self.GOAL_REWARD
-        self.num_goalRewards += 1
-        if self.num_goalRewards > 5:
-            self.done = True
 
-      if (self.next_state[0] <= 3 and self.next_state[1] <= 3) and self.num_goalRewards <= 5:
+      if (self.next_state[4] <= 3 and self.next_state[5] <= 3) and self.num_goalRewards <= 5:
         self.reward += self.GOAL_REWARD*4
         self.num_goalRewards += 1
-        if self.num_goalRewards > 5:
+        if self.num_goalRewards == 5:
             self.done = True
+            self.reward += self.GOAL_REWARD*100
+
+      self.reward += (2 - (self.next_state[4]/self.max_r))**2
+      self.reward += (2 - (self.next_state[5]/self.max_d))**2
 
       # punish if the UAV and UAV are too far apart
-      if self.next_state[2] > 9:
+      if self.next_state[6] > 9:
         self.reward -= self.COMMUNICATION_RANGE_PENALTY
 
       # punish if there are too many solver failures
@@ -176,16 +206,28 @@ class dqnEnv(gym.Env):
       self.zd = self.curr_posUAV[8][0]
       self.SMPC_UGV.opti.set_value(self.SMPC_UGV.r1_goal, self.curr_posUGV)
       self.SMPC_UAV.opti.set_value(self.SMPC_UAV.r_goal, self.curr_posUAV)
+      self.SMPC_UAV.check_obstacles(np.concatenate((self.curr_posUAV[0], self.curr_posUAV[4], self.curr_posUAV[8])))
+      self.SMPC_UGV.check_obstacles(np.concatenate((self.curr_posUGV[0], self.curr_posUGV[1], [0])))
       self.done = False
       # reward for ground robot r and drone robot d
       self.reward = 0
       self.step_number = 0
       self.solver_failure = 0
       self.num_goalRewards = 0
-      self.next_state = np.zeros(((self.NUM_OBSTACLES * 2) + 3,))
-      self.next_state[0] = np.round(distance.euclidean((self.xr, self.yr), (self.gxr, self.gyr)), 2)
-      self.next_state[1] = np.round(distance.euclidean((self.xd, self.yd), (self.gxd, self.gyd)), 2)
-      self.next_state[2] = np.round(distance.euclidean((self.xd, self.yd, self.zd), (self.xr, self.yr, 0)), 2)
+      #self.next_state = np.zeros(((self.NUM_OBSTACLES * 2) + 3,))
+      #self.next_state[0] = np.round(distance.euclidean((self.xr, self.yr), (self.gxr, self.gyr)), 0)
+      #self.next_state[1] = np.round(distance.euclidean((self.xd, self.yd), (self.gxd, self.gyd)), 0)
+      #self.next_state[2] = np.round(distance.euclidean((self.xd, self.yd, self.zd), (self.xr, self.yr, 0)), 0)
+      self.next_state = np.zeros(((self.NUM_OBSTACLES * 2) + 3 + 4,))
+      self.next_state[0] = np.round(self.xr,0)
+      self.next_state[1] = np.round(self.yr,0)
+      self.next_state[2] = np.round(self.xd,0)
+      self.next_state[3] = np.round(self.yd,0)
+      self.next_state[4] = np.round(distance.euclidean((self.xr, self.yr), (self.gxr, self.gyr)), 0)
+      self.next_state[5] = np.round(distance.euclidean((self.xd, self.yd), (self.gxd, self.gyd)), 0)
+      self.next_state[6] = np.round(distance.euclidean((self.xd, self.yd, self.zd), (self.xr, self.yr, 0)), 0)
+      self.next_state[7:7 + self.NUM_OBSTACLES] = self.SMPC_UGV.dqn_states
+      self.next_state[7 + self.NUM_OBSTACLES:] = self.SMPC_UAV.dqn_states
       self.ugv_done = False
       self.uav_done = False
 
