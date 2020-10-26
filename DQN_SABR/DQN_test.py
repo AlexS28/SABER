@@ -83,8 +83,6 @@ for i in range(1, len(obs) + 1):
     num_obs_const += obs[i]['polygon_type']
 NUM_OBSTACLES = num_obs_const
 
-env = gym.make('dqn-v0')
-
 max_t = 50
 num_models = 11
 

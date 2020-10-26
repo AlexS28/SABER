@@ -87,10 +87,10 @@ NUM_OBSTACLES = num_obs_const
 env = gym.make('dqn-v0')
 env.init(curr_posUGV, goal_posUGV, curr_posUAV, goal_posUAV, obs, SMPC_UGV, SMPC_UAV)
 env.seed(0)
-agent = Agent(state_size=(NUM_OBSTACLES * 2) + 3+4, action_size=83, seed=0)
+agent = Agent(state_size=(NUM_OBSTACLES * 2) + 3 + 4, action_size=83, seed=0)
 
 # max_t = 200, eps_.999, eps_end 0.1 (For random obstacles, eps_decay = 0.99995 seems good), otherwise use 0.9995
-def dqn(n_episodes=20000, max_t=100, eps_start=1, eps_end=0.05, eps_decay=0.9995):
+def dqn(n_episodes=20000, max_t=100, eps_start=1, eps_end=0.05, eps_decay=0.99995):
 
     """Deep Q-Learning.
     Params
@@ -136,6 +136,7 @@ def dqn(n_episodes=20000, max_t=100, eps_start=1, eps_end=0.05, eps_decay=0.9995
         print('\rEpisode {}\tAverage Score: {:.2f}'.format(i_episode, np.mean(scores_window)), end="")
         if i_episode % 10 == 0:
             print('\rEpisode {}\tAverage Score: {:.2f}'.format(i_episode, np.mean(scores_window)))
+            print(eps)
             scores_graph.append(np.mean(scores_window))
             max_avg = np.mean(scores_window)
 
