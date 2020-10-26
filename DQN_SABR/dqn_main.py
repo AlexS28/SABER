@@ -154,21 +154,25 @@ def dqn(n_episodes=25000, max_t=100, eps_start=1, eps_end=0.05, eps_decay=0.9999
     torch.save(agent.qnetwork_local.state_dict(), 'checkpoint_last.pth')
     return scores_graph
 
+
 scores_graph = dqn()
+dataset_r = np.delete(env.dataset_r, 0, 1)
+dataset_d = np.delete(env.dataset_d, 0, 1)
+np.savetxt("data_collection/dataset_r.csv", dataset_r, delimiter=",")
+np.savetxt("data_collection/dataset_d.csv", dataset_d, delimiter=",")
+
 # plot the scores
 fig = plt.figure()
 ax = fig.add_subplot(111)
 plt.plot(np.arange(len(scores_graph)), scores_graph)
 plt.plot(pd.Series(scores_graph).rolling(100).mean())
 
-
 plt.title('Deep Q-Learning - Average Rewards During Training')
 plt.ylabel('Average Reward')
 plt.xlabel('Per 100 Episodes')
 plt.show()
-
-dataset_r = np.delete(env.dataset_r, 0, 1)
-dataset_d = np.delete(env.dataset_d, 0, 1)
-np.savetxt("data_collection/dataset_r.csv", dataset_r, delimiter=",")
-np.savetxt("data_collection/dataset_d.csv", dataset_d, delimiter=",")
+plt.savefig("dqn_results", dpi=None, facecolor='w', edgecolor='w',
+        orientation='portrait', papertype=None, format=None,
+        transparent=False, bbox_inches=None, pad_inches=0.1,
+        frameon=None, metadata=None)
 

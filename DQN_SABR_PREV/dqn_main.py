@@ -36,7 +36,7 @@ env.seed(0)
 agent = Agent(state_size=(len(OBSTACLE_X)+1)*2, action_size=81, seed=0)
 
 # max_t = 200, eps_.999, eps_end 0.1 (For random obstacles, eps_decay = 0.99995 seems good), otherwise use 0.9995
-def dqn(n_episodes=40000, max_t=300, eps_start=1, eps_end=0.05, eps_decay=0.99995):
+def dqn(n_episodes=1, max_t=50, eps_start=1, eps_end=0.05, eps_decay=0.99995):
 
     """Deep Q-Learning.
     Params
