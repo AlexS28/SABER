@@ -36,13 +36,12 @@ lb_state = np.array([[-10], [-10], [-2*np.pi]], dtype=float)
 ub_state = np.array([[10], [10], [2*np.pi]], dtype=float)
 lb_control = np.array([[-1.5], [-np.pi/2]], dtype=float)
 ub_control = np.array([[1.5], [np.pi/2]], dtype=float)
-Q = np.array([[1, 0, 0], [0, 1, 0], [0, 0, 1]])
-R_init = np.array([[1, 0, 0], [0, 1, 0] ,[0, 0, 0.001]])
+Q = np.array([[1, 0, 0], [0, 2, 0], [0, 0, 0.05]])
+R_init = np.array([[0.5, 0, 0], [0, 0.5, 0] ,[0, 0, 0.5]])
 angle_noise_r1 = 0.0
 angle_noise_r2 = 0.0
 relative_measurement_noise_cov = np.array([[0.0,0], [0,0.0]])
 maxComm_distance = -10
-
 
 SMPC_UGV = SMPC_UGV_Planner(dT, mpc_horizon, curr_posUGV, robot_size, lb_state,
                             ub_state, lb_control, ub_control, Q, R_init, angle_noise_r1, angle_noise_r2,
@@ -90,7 +89,7 @@ env.seed(0)
 agent = Agent(state_size=(NUM_OBSTACLES * 2) + 3 + 4, action_size=83, seed=0)
 
 # max_t = 200, eps_.999, eps_end 0.1 (For random obstacles, eps_decay = 0.99995 seems good), otherwise use 0.9995
-def dqn(n_episodes=20000, max_t=100, eps_start=1, eps_end=0.05, eps_decay=0.99995):
+def dqn(n_episodes=25000, max_t=100, eps_start=1, eps_end=0.05, eps_decay=0.99995):
 
     """Deep Q-Learning.
     Params

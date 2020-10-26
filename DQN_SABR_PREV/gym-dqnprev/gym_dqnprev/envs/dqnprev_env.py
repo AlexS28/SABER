@@ -55,6 +55,7 @@ class dqnprevEnv(gym.Env):
     self.reward_step = 0
     self.reward = 0
     self.step_number = 0
+    self.safety_track = 0
 
   class Blob:
     def __init__(self, x, y):
@@ -96,9 +97,9 @@ class dqnprevEnv(gym.Env):
         if self.xr == obstacle.x and self.yr == obstacle.y:
             self.reward -= self.OBSTACLE_COLLISION_PENALTY
             self.done = True
-        if self.xd == obstacle.x and self.yd == obstacle.y:
-            self.reward -= self.OBSTACLE_COLLISION_PENALTY
-            self.done = True
+        #if self.xd == obstacle.x and self.yd == obstacle.y:
+        #    self.reward -= self.OBSTACLE_COLLISION_PENALTY
+        #    self.done = True
 
       if not self.done and ((self.xr == self.gxr and self.yr == self.gyr) or (self.xd == self.gxd and self.yd == self.gyd)):
             self.reward += self.GOAL_REWARD
@@ -106,10 +107,21 @@ class dqnprevEnv(gym.Env):
             self.reward += 4*self.GOAL_REWARD
 
       self.reward_step -= 1
-      if self.step_number > 50:
+      if self.step_number > 150:
           self.reward += self.reward_step
 
       return self.next_state, self.reward, self.done, {}
+
+  def reward_safety(self):
+      if round(distance.euclidean((self.xr, self.yr), (self.xd, self.yd)),2) > 6:
+          self.done=True
+          self.reward -= 1
+
+      for obstacle in self.obstacles:
+        if (round(distance.euclidean((self.xr, self.yr), (obstacle.x, obstacle.y)),2) > 1) and (round(distance.euclidean((self.xr, self.yr), (obstacle.x, obstacle.y)),2) < 3) and (self.safety_track < 6):
+            self.reward += 1
+            self.safety_track += 1
+
 
   def move(self, xr, yr, xd, yd):
 
@@ -162,6 +174,7 @@ class dqnprevEnv(gym.Env):
       self.reward = 0
       self.step_number = 0
       self.reward_step = 0
+      self.safety_track = 0
       return self.next_state
 
   def render(self, mode='human', close=False):

@@ -159,8 +159,8 @@ class dqnEnv(gym.Env):
             self.done = True
             self.reward += self.GOAL_REWARD*100
 
-      #self.reward += (2 - (self.next_state[4]/self.max_r))**2
-      #self.reward += (2 - (self.next_state[5]/self.max_d))**2
+      self.reward += (1.5 - (self.next_state[4]/self.max_r))**2
+      self.reward += (1.5 - (self.next_state[5]/self.max_d))**2
 
       # punish if the UAV and UAV are too far apart
       if self.next_state[6] > 9:

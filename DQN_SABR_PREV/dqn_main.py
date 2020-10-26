@@ -6,23 +6,37 @@ import numpy as np
 import matplotlib.pyplot as plt
 
 env = gym.make('dqnprev-v0')
-MAP_SIZE=10
-robot_start = [0, 0]
-robot_goal = [9, 9]
-drone_start = [0, 0]
-drone_goal = [9, 9]
-#OBSTACLE_X = [5, 7, 3, 4, 6, 3, 5, 4, 2, 5, 4, 3]
-#OBSTACLE_Y = [5, 7, 4, 3, 8, 5, 4, 5, 3, 3, 4, 3]
+MAP_SIZE=20
 
-OBSTACLE_X = [5, 7, 4]
-OBSTACLE_Y = [5, 7, 4]
 
-env.init(robot_start[0], robot_start[1], robot_goal[0], robot_goal[1], drone_start[0], drone_start[1], drone_goal[0], drone_goal[1], MAP_SIZE, OBSTACLE_X, OBSTACLE_Y, True)
+# Optimality:
+robot_start = [16, 9]
+robot_goal = [2, 9]
+drone_start = [16, 10]
+drone_goal = [2, 10]
+
+OBSTACLE_X = [9, 9, 9 ,9 ,9 ,9, 10, 10, 10, 10, 10, 10]
+OBSTACLE_Y = [7, 8, 9, 10, 11, 12, 7, 8, 9, 10, 11, 12]
+
+# Safety
+OBSTACLE_X = [8,9,10,11,12,13,12,13,6]
+OBSTACLE_Y = [3,3,3,3,3,3,2,2,9]
+
+# Complex
+robot_start = [16, 9]
+robot_goal = [2, 13]
+drone_start = [16, 10]
+drone_goal = [2, 6]
+OBSTACLE_X = [6,9,9,9,9,12,9,12,5,12,12,12,12,7,7,7,8,8,8]
+OBSTACLE_Y = [5,2,3,4,5,6,8,6,17,11,12,13,14,12,13,14,12,13,14]
+
+
+env.init(robot_start[0], robot_start[1], robot_goal[0], robot_goal[1], drone_start[0], drone_start[1], drone_goal[0], drone_goal[1], MAP_SIZE, OBSTACLE_X, OBSTACLE_Y, False)
 env.seed(0)
 agent = Agent(state_size=(len(OBSTACLE_X)+1)*2, action_size=81, seed=0)
 
 # max_t = 200, eps_.999, eps_end 0.1 (For random obstacles, eps_decay = 0.99995 seems good), otherwise use 0.9995
-def dqn(n_episodes=40000, max_t=100, eps_start=1, eps_end=0.05, eps_decay=0.99995):
+def dqn(n_episodes=40000, max_t=300, eps_start=1, eps_end=0.05, eps_decay=0.99995):
 
     """Deep Q-Learning.
     Params
