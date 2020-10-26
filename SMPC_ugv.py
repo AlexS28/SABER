@@ -716,8 +716,8 @@ if __name__ == '__main__':
     ub_state = np.array([[8], [8], [2*pi]], dtype=float)
     lb_control = np.array([[-1.5], [-np.pi/2]], dtype=float)
     ub_control = np.array([[1.5], [np.pi/2]], dtype=float)
-    Q = np.array([[1, 0, 0], [0, 1, 0], [0, 0, 1]])
-    R_init = np.array([[1, 0, 0], [0, 1, 0] ,[0, 0, 0.001]])
+    Q = np.array([[1, 0, 0], [0, 2, 0], [0, 0, 0.05]])
+    R_init = np.array([[0.5, 0, 0], [0, 0.5, 0] ,[0, 0, 0.5]])
     angle_noise_r1 = 0.0
     angle_noise_r2 = 0.0
     relative_measurement_noise_cov = np.array([[0.0,0], [0,0.0]])
