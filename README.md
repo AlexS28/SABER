@@ -13,7 +13,7 @@ terminal and run the file - this file will start the mapping process. Once this 
 play3.py file (at the end of the code in this file, you can set the name of the dataset that will be saved in
 the data_collection folder - it must be of the form dataset#.csv). 
 
-Running the RNN (at the moment requires python3):
+Running the RNN:
 
 The only option that needs to be changed in the rnn.py file, is whether the datasets collected in the dataset 
 collection folder are based on lidar scans or rgbd images. You can have any number of datasets in that folder,
