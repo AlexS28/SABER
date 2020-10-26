@@ -16,7 +16,7 @@ import matplotlib.pyplot as plt
 import math as m
 import control
 from scipy.stats import linregress
-from ROS_interface import *
+#from ROS_interface import *
 
 class SMPC_UGV_Planner():
 
@@ -152,11 +152,11 @@ class SMPC_UGV_Planner():
             con = self.U[:, k]
             st = self.X[:, k + 1]
 
-            self.objFunc = self.objFunc + 10*mtimes(mtimes((st - self.r1_goal).T, self.Q), st - self.r1_goal) + \
-                           mtimes(mtimes(con.T, self.R), con) + self.slack[:, k+1]*self.slack_cost
+            self.objFunc = self.objFunc + mtimes(mtimes((st - self.r1_goal).T, self.Q), st - self.r1_goal) + \
+                           0.5*mtimes(mtimes(con.T, self.R), con) + self.slack[:, k+1]*self.slack_cost
 
         st = self.X[:, self.N]
-        self.objFunc = self.objFunc + 10*mtimes(mtimes((st - self.r1_goal).T, self.P), st - self.r1_goal) + self.slack[:,self.N]*self.slack_cost
+        self.objFunc = self.objFunc + mtimes(mtimes((st - self.r1_goal).T, self.P), st - self.r1_goal) + self.slack[:,self.N]*self.slack_cost
 
         # initialize the constraints for the objective function
         self.init_constraints()
@@ -705,7 +705,7 @@ class SMPC_UGV_Planner():
                     #    self.ax.add_patch(q)
                     #    art3d.pathpatch_2d_to_3d(q, z=height[j], zdir="z")
 
-
+"""
 if __name__ == '__main__':
     # initialize all required variables for the SMPC solver
     dT = 0.5
@@ -735,7 +735,7 @@ if __name__ == '__main__':
     #         'risk': 0.4}})
     #obs.update(
     #    {3: {'vertices': [[4, 4.1,0]], 'size': 0.7, 'polygon_type': 1, 'risk': 0.4}})
-    obs = {}
+
     SMPC = SMPC_UGV_Planner(dT, mpc_horizon, curr_pos, robot_size, lb_state,
                             ub_state, lb_control, ub_control, Q, R_init, angle_noise_r1, angle_noise_r2,
                             relative_measurement_noise_cov, maxComm_distance, obs, animate)
@@ -753,6 +753,7 @@ if __name__ == '__main__':
                 u = sol.value(SMPC.U[:, SMPC.N-1])
                 ROS.send_velocity(u)
                 curr_pos = ROS.get_current_pose()
+                curr_pos = np.array(curr_pos).reshape(3, 1)
                 SMPC.check_obstacles(np.concatenate((curr_pos[0], curr_pos[1], [0])))
             except:
                 failure_count += 1
@@ -760,9 +761,10 @@ if __name__ == '__main__':
                 u[1] = 0
                 ROS.send_velocity(u)
                 curr_pos = ROS.get_current_pose()
+                curr_pos = np.array(curr_pos).reshape(3,1)
                 print('WARNING: Solver has failed, using previous control value for next input')
                 SMPC.check_obstacles(np.concatenate((curr_pos[0], curr_pos[1], [0])))
             SMPC.opti.set_value(SMPC.r1_pos, curr_pos)
             SMPC.animate(curr_pos)
             rate.sleep()
-
+"""

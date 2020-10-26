@@ -19,20 +19,21 @@ output_scaler = MinMaxScaler(feature_range = (0.01, 0.99))
 ###################################
 
 # number of datasets
-num_datasets = 2
+num_datasets = 6
 # number of data to use per dataset (ensure each dataset has equal or more data points than this value)
 #num_dataToUse = 2445
 # number of timesteps per sample.
-num_timesteps = 5
+num_timesteps = 10
 # number of epochs used for training
-EPOCHS = 20000
+EPOCHS = 30000
 # indicate whether dataset is from lidar scans or rgbd, default is lidar
-lidar = True
+lidar = False
 
 if lidar:
-    num_features = 360
+    num_features = 363
 else:
-    num_features = 10
+    num_features = 15
+
 
 train_inputs = np.zeros((1, num_features))
 train_outputs = np.zeros((1, 4))
@@ -40,11 +41,21 @@ train_outputs = np.zeros((1, 4))
 for i in range(0, num_datasets):
     data_name = 'data_collection/dataset' + str(i + 1) + '.csv'
     dataset = pd.read_csv(data_name, header=None)
+    dataset = dataset.apply(pd.to_numeric, errors='coerce')
+    dataset = dataset.dropna()
     dataset = dataset.values
+
     print("Concatenating dataset #{} ".format(i+1))
-    for j in range(0, dataset.shape[0]):
-        train_inputs = np.vstack((train_inputs, dataset[j, 0:num_features]))
-        train_outputs = np.vstack((train_outputs, dataset[j, -4:]))
+    if lidar:
+        for j in range(0, dataset.shape[0]):
+            train_inputs = np.vstack((train_inputs, dataset[j, 0:num_features]))
+            train_outputs = np.vstack((train_outputs, dataset[j, -4:]))
+    else:
+        for j in range(0, dataset.shape[0]):
+            train_inputs = np.vstack((train_inputs, dataset[j, 0:num_features]))
+            output = np.hstack((dataset[j, -9], dataset[j, -8], dataset[j, -6], dataset[j, -5]))
+            train_outputs = np.vstack((train_outputs, output))
+
 
 """
 # all data is concatenated into a 3D vector, based on how many datasets are currently in the data_collection folder
@@ -169,22 +180,30 @@ plt.plot(truth_output[:,0])
 plt.plot(RNN_output[:,0])
 plt.legend(["Truth", "Prediction"])
 plt.title("Truth vs Prediction Covariances, xx")
+plt.ylabel('covariance (m^2)')
+plt.xlabel('timestep')
 plt.show()
 
 plt.plot(truth_output[:,1])
 plt.plot(RNN_output[:,1])
 plt.legend(["Truth", "Prediction"])
+plt.ylabel('covariance (m^2)')
+plt.xlabel('timestep')
 plt.title("Truth vs Prediction Covariances, xy")
 plt.show()
 
 plt.plot(truth_output[:,2])
 plt.plot(RNN_output[:,2])
+plt.ylabel('covariance (m^2)')
+plt.xlabel('timestep')
 plt.legend(["Truth", "Prediction"])
 plt.title("Truth vs Prediction Covariances, yx")
 plt.show()
 
 plt.plot(truth_output[:,3])
 plt.plot(RNN_output[:,3])
+plt.ylabel('covariance (m^2)')
+plt.xlabel('timestep')
 plt.legend(["Truth", "Prediction"])
 plt.title("Truth vs Prediction Covariances, yy")
 plt.show()
@@ -196,4 +215,4 @@ eyx = truth_output[:,2]-RNN_output[:,2]
 eyy = truth_output[:,3]-RNN_output[:,3]
 
 error_dataset = np.vstack((exx, exy, eyx, eyy)).reshape(exx.shape[0], 4)
-np.savetxt("ErrorDataset_rnn.csv", error_dataset, delimiter=",", header="xx, xy, yx, yy")
+np.savetxt("ErrorDataset_rnn_pf.csv", error_dataset, delimiter=",", header="xx, xy, yx, yy")

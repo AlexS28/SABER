@@ -13,7 +13,7 @@ from matplotlib.patches import Circle
 import matplotlib.pyplot as plt
 import math as m
 import control
-from ROS_interface import *
+#from ROS_interface import *
 
 class SMPC_UAV_Planner():
 
@@ -302,7 +302,7 @@ if __name__ == '__main__':
     mpc_horizon = 10
     # x, vel_x, th1, th1_vel, y, vel_y, th2, th2_vel, z, z_vel
     curr_pos = np.array([0,0,0,0,0,0,0,0,0,0]).reshape(10,1)
-    goal_points = [[0,0,0,0,0,0,0,0,10,0], [10,0,0,0,10,0,0,0,5,0], [0,0,0,0,0,0,0,0,5,0]]
+    goal_points = [[0,0,0,0,0,0,0,0,5,0], [10,0,0,0,10,0,0,0,5,0], [0,0,0,0,10,0,0,0,5,0], [0, 0,0, 0,0,0 ,0,0,5,0]]
     robot_size = 0.5
     #lb_state = np.array([[-20], [-5], [-10*(pi/180)], [-50*pi/180],[-20], [-5], [-10*(pi/180)], [-50*pi/180],[-20],[-5]], dtype=float)
     #ub_state = np.array([[20], [5], [10*(pi/180)], [50*pi/180],[20], [5], [10*(pi/180)], [50*pi/180],[20],[5]], dtype=float)
@@ -336,9 +336,19 @@ if __name__ == '__main__':
         {2: {'vertices': [[6, 5], [7, 7], [8, 5.2]], 'a': [], 'slopes': [], 'intercepts': [], 'polygon_type': 3,
              'risk': 0.4}})
     obs.update(
-        {3: {'vertices': [[4, 4]], 'size': 0.8, 'polygon_type': 1, 'risk': 0.4}})
+        {3: {'vertices': [[4, 1]], 'size': 0.9, 'polygon_type': 1, 'risk': 0.3}})
     obs.update(
-        {4: {'vertices': [[7, 7]], 'size': 0.8, 'polygon_type': 1, 'risk': 0.4}})
+        {4: {'vertices': [[3, 4]], 'size': 0.9, 'polygon_type': 1, 'risk': 0.3}})
+    obs.update(
+        {5: {'vertices': [[8, 4]], 'size': 0.9, 'polygon_type': 1, 'risk': 0.3}})
+    obs.update(
+        {6: {'vertices': [[3, 9]], 'size': 0.9, 'polygon_type': 1, 'risk': 0.3}})
+
+    obs.update(
+        {7: {'vertices': [[3, 10]], 'size': 0.9, 'polygon_type': 1, 'risk': 0.3}})
+
+    obs.update(
+        {8: {'vertices': [[7, 7]], 'size': 0.9, 'polygon_type': 1, 'risk': 0.3}})
 
     ROS = ROSInterface()
     rospy.init_node('ros_interface')
@@ -373,7 +383,4 @@ if __name__ == '__main__':
             SMPC.check_obstacles([curr_pos[0], curr_pos[4]])
             SMPC.animate(curr_pos)
             rate.sleep()
-
-            if i == len(goal_points)-1 and m.sqrt((curr_pos[0] - goal_pos[0]) ** 2 + (curr_pos[4] - goal_pos[4]) ** 2 + (curr_pos[8] - goal_pos[8])**2) > 0.5:
-                ROS.send_velocityUAV([0, 0, 0, 0, 0])
 """

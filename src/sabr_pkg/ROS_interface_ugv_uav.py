@@ -15,10 +15,10 @@ import math
 import numpy as np
 from hector_uav_msgs.srv import EnableMotors
 
-class ROSInterface:
+class ROSInterfaceUGV_UAV:
 
     def __init__(self):
-        motors_on = rospy.ServiceProxy('enable_motors', EnableMotors)
+        motors_on = rospy.ServiceProxy('/uav/enable_motors', EnableMotors)
         motors_on.call(1)
         self.current_pose = Odometry()
         self.current_poseEulerUAV = Vector3Stamped()
@@ -28,13 +28,14 @@ class ROSInterface:
         self.current_poseUAV = PoseStamped()
 
         # TODO: Make them remappable
-        self.pub_vel = rospy.Publisher("/cmd_vel", Twist, queue_size=10) #/cmd/vel
-        self.sub_pose = rospy.Subscriber("/odom", Odometry, self.receive_pose) #/pose_in
-        self.sub_poseUAV = rospy.Subscriber("/ground_truth_to_tf/pose", PoseStamped, self.receive_poseUAV)
-        self.sub_poseEulerUAV = rospy.Subscriber("/ground_truth_to_tf/euler", Vector3Stamped, self.receive_poseEulerUAV)
-        self.sub_poseVelUAV = rospy.Subscriber("/ground_truth/state", Odometry, self.receive_poseVelUAV)
-        self.sub_posCov = rospy.Subscriber("/amcl_pose", PoseWithCovarianceStamped, self.receive_posCov)
-        self.sub_scan = rospy.Subscriber("/scan", LaserScan, self.receive_scan)
+        self.pub_vel_ugv = rospy.Publisher("/cmd_vel", Twist, queue_size=10) #/cmd/vel
+        self.pub_vel_uav = rospy.Publisher("uav/cmd_vel", Twist, queue_size=10)  # /cmd/vel
+        self.sub_pose = rospy.Subscriber("odom", Odometry, self.receive_pose) #/pose_in
+        self.sub_poseUAV = rospy.Subscriber("uav/ground_truth_to_tf/pose", PoseStamped, self.receive_poseUAV)
+        self.sub_poseEulerUAV = rospy.Subscriber("uav/ground_truth_to_tf/euler", Vector3Stamped, self.receive_poseEulerUAV)
+        self.sub_poseVelUAV = rospy.Subscriber("uav/ground_truth/state", Odometry, self.receive_poseVelUAV)
+        self.sub_posCov = rospy.Subscriber("amcl_pose", PoseWithCovarianceStamped, self.receive_posCov)
+        self.sub_scan = rospy.Subscriber("scan", LaserScan, self.receive_scan)
 
     # Send MPC controls trough ROS to Gazebo simulation or real hardware
     def send_velocity(self, u_vec):
@@ -47,7 +48,7 @@ class ROSInterface:
         new_msg.angular.x = 0
         new_msg.angular.y = 0
         # Publish U from MPC as /cmd/vel
-        self.pub_vel.publish(new_msg)
+        self.pub_vel_ugv.publish(new_msg)
 
     def send_velocityUAV(self, u_vec):
         new_msg = Twist()
@@ -57,7 +58,7 @@ class ROSInterface:
         new_msg.angular.x = u_vec[3]
         new_msg.angular.y = u_vec[4]
         new_msg.angular.z = 0
-        self.pub_vel.publish(new_msg)
+        self.pub_vel_uav.publish(new_msg)
 
     # Process pose measurement from Gazebo simulation or tracking system from ODOM
     def receive_pose(self, msg):
@@ -140,5 +141,5 @@ class ROSInterface:
             for i in range(0, len(scans)):
                 if math.isinf(scans[i]) or np.isnan(scans[i]):
                     scans[i] = float(4)
-            scans = sorted(scans)
+            #scans = sorted(scans)
         return scans

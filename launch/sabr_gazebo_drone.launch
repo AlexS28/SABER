@@ -2,7 +2,7 @@
 
 <launch>
 	<include file="$(find gazebo_ros)/launch/empty_world.launch">
-    	<arg name="world_name" value="$(find sabr_pkg)/worlds/world_drone.world"/>
+    	<arg name="world_name" value="$(find sabr_pkg)/worlds/world_cube_cylinderUAVnew.world"/>
   	</include>
     <include file="$(find hector_quadrotor_gazebo)/launch/spawn_quadrotor_with_kinect_SABR.launch">
     </include>
