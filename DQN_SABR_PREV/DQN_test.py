@@ -1,33 +1,35 @@
 import gym_dqnprev
 import gym
-from DQN_SABR_PREV.dqn_agent import Agent
-from DQN_SABR_PREV.model import QNetwork
+from dqn_agent import Agent
+from model import QNetwork
 import torch
 import numpy as np
 import matplotlib.pyplot as plt
 import time
 
-max_t = 100
+max_t = 500
 num_models = 11
-MAP_SIZE=10
-OBSTACLE_X = [5, 7, 3, 4, 6, 3, 5, 4, 2, 5, 4, 3]
-OBSTACLE_Y = [5, 7, 4, 3, 8, 5, 4, 5, 3, 3, 4, 3]
-OBSTACLE_X = [5, 7, 4]
-OBSTACLE_Y = [5, 7, 4]
+MAP_SIZE=20
+# Optimality:
+robot_start = [16, 9]
+robot_goal = [2, 9]
+drone_start = [16, 10]
+drone_goal = [2, 10]
 
-robot_start = [0, 0]
-robot_goal = [9, 9]
-drone_start = [0, 0]
-drone_goal = [9, 9]
+OBSTACLE_X = [9, 9, 9 ,9 ,9 ,9, 10, 10, 10, 10, 10, 10]
+OBSTACLE_Y = [7, 8, 9, 10, 11, 12, 7, 8, 9, 10, 11, 12]
+
+# Safety
+OBSTACLE_X = [8,9,10,11,12,13,12,13,6]
+OBSTACLE_Y = [3,3,3,3,3,3,2,2,14]
 
 env = gym.make('dqnprev-v0')
-env.seed(0)
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
-env.init(robot_start[0], robot_start[1], robot_goal[0], robot_goal[1], drone_start[0], drone_start[1], drone_goal[0],
-         drone_goal[1], MAP_SIZE, OBSTACLE_X, OBSTACLE_Y, True)
+env.init(robot_start[0], robot_start[1], robot_goal[0], robot_goal[1], drone_start[0], drone_start[1], drone_goal[0], drone_goal[1], MAP_SIZE, OBSTACLE_X, OBSTACLE_Y, False)
+env.seed(0)
 index = num_models
 
-index = 19
+index = 0
 model = QNetwork(state_size=(len(OBSTACLE_X)+1)*2, action_size=81, seed=0).to(device)
 model.load_state_dict(torch.load('dqn_models{}checkpoint{}.pth'.format('/', index)))
 state = env.reset()

@@ -13,8 +13,8 @@ from collections import deque
 import matplotlib.pyplot as plt
 import torch.optim as optim
 import numpy as np
-from SMPC_uav import *
-from SMPC_ugv import *
+from DQN_SABR.SMPC_uav import *
+from DQN_SABR.SMPC_ugv import *
 
 # SMPC setup for UAV and UGV
 

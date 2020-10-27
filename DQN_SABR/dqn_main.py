@@ -1,6 +1,6 @@
 import gym
 import gym_dqn
-from DQN_SABR.dqn_agent import Agent
+from dqn_agent import Agent
 import random
 import torch
 import numpy as np
