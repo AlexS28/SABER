@@ -43,6 +43,7 @@ include_directories(
 install(FILES launch/sabr_gazebo_collect.launch
               launch/sabr_gazebo_drone.launch
               launch/sabr_gazebo_map.launch
+              launch/sabr_gazebo_ugv_uav.launch
   DESTINATION ${CATKIN_PACKAGE_SHARE_DESTINATION}/launch)
 
 
@@ -52,6 +53,8 @@ install(DIRECTORY worlds rviz
 
 catkin_install_python(PROGRAMS scripts/play2.py
                                scripts/play3.py
+                               scripts/SABER.py
                                src/sabr_pkg/MPC_ugv_Simple.py
                                src/sabr_pkg/ROS_interface.py
+                               src/sabr_pkg/ROS_interface_ugv_uav.py
                                DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION})
