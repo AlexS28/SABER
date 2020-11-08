@@ -1,7 +1,7 @@
 import numpy as np
 import random
 from collections import namedtuple, deque
-from model import QNetwork
+from DQN_SABR_PREV.model import QNetwork
 import torch
 import torch.nn.functional as F
 import torch.optim as optim
@@ -29,7 +29,6 @@ class Agent():
 
     def __init__(self, state_size, action_size, seed):
         """Initialize an Agent object.
-
         Params
         ======
             state_size (int): dimension of each state
@@ -64,9 +63,8 @@ class Agent():
                 experiences = self.memory.sample()
                 self.learn(experiences, GAMMA)
 
-    def act(self, state, eps):
+    def act(self, state, eps=0.):
         """Returns actions for given state as per current policy.
-
         Params
         ======
             state (array_like): current state

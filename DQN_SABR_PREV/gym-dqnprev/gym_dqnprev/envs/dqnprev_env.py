@@ -38,15 +38,11 @@ class dqnprevEnv(gym.Env):
     self.OBSTACLE_X = obstacles_x
     self.OBSTACLE_Y = obstacles_y
     self.NUM_OBSTACLES = len(self.OBSTACLE_X)
-    self.next_state = np.zeros(((self.NUM_OBSTACLES*2 + 6),))
-    self.next_state[0] = self.xr
-    self.next_state[1] = self.yr
-    self.next_state[2] = self.xd
-    self.next_state[3] = self.yd
-    self.next_state[4] = round(distance.euclidean((self.xr, self.yr), (self.gxr, self.gyr)),2)
-    self.next_state[5] = round(distance.euclidean((self.xd, self.yd), (self.gxd, self.gyd)),2)
-    self.max_r = self.next_state[4]
-    self.max_d = self.next_state[5]
+    self.next_state = np.zeros(((self.NUM_OBSTACLES + 1)*2,))
+    self.next_state[0] = round(distance.euclidean((self.xr, self.yr), (self.gxr, self.gyr)),2)
+    self.next_state[1] = round(distance.euclidean((self.xd, self.yd), (self.gxd, self.gyd)),2)
+    self.max_r = self.next_state[0]
+    self.max_d = self.next_state[1]
     self.size = map_size
     self.randomize = randomize
     # each robot has 9 possible actions, two robots simultaneously --> 9x9 = 81 actions
@@ -59,7 +55,6 @@ class dqnprevEnv(gym.Env):
     self.reward_step = 0
     self.reward = 0
     self.step_number = 0
-    self.safety_track = 0
 
   class Blob:
     def __init__(self, x, y):
@@ -88,53 +83,33 @@ class dqnprevEnv(gym.Env):
               self.unseen_obstacles.remove(obstacle)
 
       for i in range(0, len(self.obstacles)):
-            self.next_state[i + 6] = round(
+            self.next_state[i + 2] = round(
                 distance.euclidean((self.xr, self.yr), (self.obstacles[i].x, self.obstacles[i].y)),2)
-            self.next_state[i + 6 + self.NUM_OBSTACLES] = round(
+            self.next_state[i + 2 + self.NUM_OBSTACLES] = round(
                 distance.euclidean((self.xd, self.yd), (self.obstacles[i].x, self.obstacles[i].y)),2)
 
-      self.next_state[4] = round(distance.euclidean((self.xr, self.yr), (self.gxr, self.gyr)),2)
-      self.next_state[5] = round(distance.euclidean((self.xd, self.yd), (self.gxd, self.gyd)),2)
+      self.next_state[0] = round(distance.euclidean((self.xr, self.yr), (self.gxr, self.gyr)),2)
+      self.next_state[1] = round(distance.euclidean((self.xd, self.yd), (self.gxd, self.gyd)),2)
 
       # punish either robot or drone if colliding into obstacle
       for obstacle in self.obstacles:
         if self.xr == obstacle.x and self.yr == obstacle.y:
             self.reward -= self.OBSTACLE_COLLISION_PENALTY
             self.done = True
-        #if self.xd == obstacle.x and self.yd == obstacle.y:
-        #    self.reward -= self.OBSTACLE_COLLISION_PENALTY
-        #    self.done = True
+        if self.xd == obstacle.x and self.yd == obstacle.y:
+            self.reward -= self.OBSTACLE_COLLISION_PENALTY
+            self.done = True
 
       if not self.done and ((self.xr == self.gxr and self.yr == self.gyr) or (self.xd == self.gxd and self.yd == self.gyd)):
-            self.reward += self.GOAL_REWARD*10
+            self.reward += self.GOAL_REWARD
       if not self.done and ((self.xr == self.gxr and self.yr == self.gyr) and (self.xd == self.gxd and self.yd == self.gyd)):
-            self.reward += 100*self.GOAL_REWARD
+            self.reward += 4*self.GOAL_REWARD
 
-      #self.reward_step -= 1
-      #if self.step_number > 150:
-      #    self.reward += self.reward_step
-
-      #self.reward += (2 - self.next_state[0]/self.max_r)
-      #self.reward += (2 - self.next_state[1]/self.max_d)
-
-      #self.reward_safety()
+      self.reward_step -= 1
+      if self.step_number > 50:
+          self.reward += self.reward_step
 
       return self.next_state, self.reward, self.done, {}
-
-  def reward_safety(self):
-      if round(distance.euclidean((self.xr, self.yr), (self.xd, self.yd)), 2) > 6:
-          self.reward -= 0.5
-
-      for obstacle in self.obstacles:
-        if (round(distance.euclidean((self.xr, self.yr), (obstacle.x, obstacle.y)),2) > 1) and (round(distance.euclidean((self.xr, self.yr), (obstacle.x, obstacle.y)),2) < 3) and (self.safety_track < 20):
-            self.reward += 1
-            self.safety_track += 1
-
-      #for obstacle in self.obstacles:
-      #  if (round(distance.euclidean((self.xd, self.yd), (obstacle.x, obstacle.y)),2) > 1) and (round(distance.euclidean((self.xd, self.yd), (obstacle.x, obstacle.y)),2) < 3) and (self.safety_track < 10):
-      #      self.reward += 1
-      #      self.safety_track += 1
-
 
   def move(self, xr, yr, xd, yd):
 
@@ -180,20 +155,13 @@ class dqnprevEnv(gym.Env):
             self.unseen_obstacles.append(new_obstacle)
       self.seen_obstacles = []
       self.episode_step = 0
-      self.next_state = np.zeros(((self.NUM_OBSTACLES*2 + 6),))
-      self.next_state[0] = self.xr
-      self.next_state[1] = self.yr
-      self.next_state[2] = self.xd
-      self.next_state[3] = self.yd
-      self.next_state[4] = round(distance.euclidean((self.xr, self.yr), (self.gxr, self.gyr)), 2)
-      self.next_state[5] = round(distance.euclidean((self.xd, self.yd), (self.gxd, self.gyd)), 2)
-      self.max_r = self.next_state[4]
-      self.max_d = self.next_state[5]
+      self.next_state = np.zeros(((self.NUM_OBSTACLES+1)*2, ))
+      self.next_state[0] = round(distance.euclidean((self.xr, self.yr), (self.gxr, self.gyr)),2)
+      self.next_state[1] = round(distance.euclidean((self.xd, self.yd), (self.gxd, self.gyd)),2)
       # reward for ground robot r and drone robot d
       self.reward = 0
       self.step_number = 0
       self.reward_step = 0
-      self.safety_track = 0
       return self.next_state
 
   def render(self, mode='human', close=False):
