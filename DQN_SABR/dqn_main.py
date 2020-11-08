@@ -20,8 +20,15 @@ if not os.path.isdir("data_collection"):
 
 # SMPC setup for UAV and UGV
 # initialize obstacles
-obs = {1: {'vertices': [[-3.01, -1,0], [-3.02, 1.03,0], [3,1,0], [3.02, -1.05,0]], 'a': [], 'slopes': [], 'intercepts': [],
+obs = {1: {'vertices': [[-1.01, -1,0], [-3.02, 1.03,0], [3,1,0], [3.02, -1.05,0]], 'a': [], 'slopes': [], 'intercepts': [],
                'polygon_type': 4, 'risk': 0.1}}
+obs.update({2: {'vertices': [[4, 3,0], [5, 5,0], [6, 3.2,0]], 'a': [], 'slopes': [], 'intercepts': [], 'polygon_type': 3,
+             'risk': 0.4}})
+obs.update(
+        {3: {'vertices': [[-4, 4.1,0]], 'size': 0.7, 'polygon_type': 1, 'risk': 0.4}})
+obs.update(
+        {4: {'vertices': [[0, 4.1,0]], 'size': 0.7, 'polygon_type': 1, 'risk': 0.4}})
+
 
 # initialize prediction horizon and discretized time, and whether to animate
 dT = 1

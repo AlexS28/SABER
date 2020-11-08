@@ -698,11 +698,11 @@ class SMPC_UGV_Planner():
                     q = Circle((center[0], center[1]), size, color='green')
                     self.ax.add_patch(q)
                     art3d.pathpatch_2d_to_3d(q, z=0, zdir="z")
-                    #height = np.linspace(0, 8, num=100)
-                    #for j in range(0, len(height)):
-                    #    q = Circle((center[0], center[1]), size, color='green')
-                    #    self.ax.add_patch(q)
-                    #    art3d.pathpatch_2d_to_3d(q, z=height[j], zdir="z")
+                    height = np.linspace(0, 8, num=100)
+                    for j in range(0, len(height)):
+                        q = Circle((center[0], center[1]), size, color='green')
+                        self.ax.add_patch(q)
+                        art3d.pathpatch_2d_to_3d(q, z=height[j], zdir="z")
 
 """
 if __name__ == '__main__':
