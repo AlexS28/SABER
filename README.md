@@ -3,7 +3,7 @@ This is the SABR submodule, part of the SABER project. To run the SABER project 
 
 The work is currently under review, and use of this code is permitted but requires citation.
 ```
-Title: SABER: Data-Driven Motion Planner for Autonomously Navigating Heterogeneous Robots
+SABER: Data-Driven Motion Planner for Autonomously Navigating Heterogeneous Robots
 Authors: Alexander Schperberg, Stephanie Tsuei, Stefano Soatto, and Dennis Hong.
 ```
 ```
