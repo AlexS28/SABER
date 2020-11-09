@@ -54,6 +54,8 @@ install(DIRECTORY worlds rviz
 catkin_install_python(PROGRAMS scripts/play2.py
                                scripts/play3.py
                                scripts/SABER.py
+                               src/sabr_pkg/SMPC_uav.py
+                               src/sabr_pkg/SMPC_ugv.py
                                src/sabr_pkg/MPC_ugv_Simple.py
                                src/sabr_pkg/ROS_interface.py
                                src/sabr_pkg/ROS_interface_ugv_uav.py
