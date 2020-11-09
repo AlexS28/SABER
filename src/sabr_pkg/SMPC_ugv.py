@@ -740,7 +740,7 @@ if __name__ == '__main__':
                             ub_state, lb_control, ub_control, Q, R_init, angle_noise_r1, angle_noise_r2,
                             relative_measurement_noise_cov, maxComm_distance, obs, animate)
 
-    ROS = ROSInterface()
+    ROS = ROSInterface(True)
     rospy.init_node('ros_interface')
     rate = rospy.Rate(10)
 

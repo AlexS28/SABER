@@ -66,7 +66,7 @@ def dqn(n_episodes=25000, max_t=100, eps_start=1, eps_end=0.05, eps_decay=0.9999
         scores.append(score)  # save most recent score
         eps = max(eps_end, eps_decay * eps)  # decrease epsilon
         print(eps)
-        print('\rEpisode {}\tAverage Score: {:.2f}'.format(i_episode, np.mean(scores_window)), end="")
+        print('\rEpisode {}\tAverage Score: {:.2f}'.format(i_episode, np.mean(scores_window)))
         if i_episode % 25 == 0:
             print('\rEpisode {}\tAverage Score: {:.2f}'.format(i_episode, np.mean(scores_window)))
             scores_graph.append(np.mean(scores_window))

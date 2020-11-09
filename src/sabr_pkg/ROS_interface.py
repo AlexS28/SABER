@@ -17,9 +17,10 @@ from hector_uav_msgs.srv import EnableMotors
 
 class ROSInterface:
 
-    def __init__(self):
-        motors_on = rospy.ServiceProxy('enable_motors', EnableMotors)
-        motors_on.call(1)
+    def __init__(self, ugv):
+        if not ugv:
+            motors_on = rospy.ServiceProxy('enable_motors', EnableMotors)
+            motors_on.call(1)
         self.current_pose = Odometry()
         self.current_poseEulerUAV = Vector3Stamped()
         self.current_poseVelUAV = Odometry()

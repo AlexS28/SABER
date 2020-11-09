@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 from sabr_pkg.SMPC_ugv import *
 from sabr_pkg.SMPC_uav import *
-#from ROS_interface_ugv_uav import *
+from sabr_pkg.ROS_interface_ugv_uav import *
 # This code runs the 'Synchronous and Autonomous Robots in Uncertain Environments with Reinforcement Learning' (SABR)
 # algorithm. It combines a stochastic MPC for a multi-agent (UAV-UGV) system, which infers future uncertainty covariances
 # using a recurrent neural network (trained on filter estimations provided by a particle-filter or visual-inertial

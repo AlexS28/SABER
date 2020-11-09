@@ -350,7 +350,7 @@ if __name__ == '__main__':
     obs.update(
         {8: {'vertices': [[7, 7]], 'size': 0.9, 'polygon_type': 1, 'risk': 0.3}})
 
-    ROS = ROSInterface()
+    ROS = ROSInterface(False)
     rospy.init_node('ros_interface')
     rate = rospy.Rate(10)
     ROS.send_velocityUAV([0, 0, 0, 0, 0])

@@ -28,7 +28,7 @@ animate = True
 MPC = MPC_UGV_Planner(dT, mpc_horizon, curr_pos, lb_state,
                             ub_state, lb_control, ub_control, Q, R, robot_size, animate)
 
-ROS = ROSInterface()
+ROS = ROSInterface(True)
 rospy.init_node('ros_interface')
 rate = rospy.Rate(10)
 

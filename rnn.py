@@ -27,7 +27,7 @@ num_timesteps = 10
 # number of epochs used for training
 EPOCHS = 30000
 # indicate whether dataset is from lidar scans or rgbd, default is lidar
-lidar = False
+lidar = True
 
 if lidar:
     num_features = 363
