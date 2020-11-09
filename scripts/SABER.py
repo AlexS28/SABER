@@ -1,3 +1,4 @@
+#!/usr/bin/env python
 from sabr_pkg.SMPC_ugv import *
 from sabr_pkg.SMPC_uav import *
 #from ROS_interface_ugv_uav import *
