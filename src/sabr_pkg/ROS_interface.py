@@ -14,10 +14,13 @@ from geometry_msgs.msg import Vector3Stamped
 import math
 import numpy as np
 from hector_uav_msgs.srv import EnableMotors
+from xivo_ros.msg import FeatureMap, FeatureData
+
+
 
 class ROSInterface:
 
-    def __init__(self, ugv):
+    def __init__(self, ugv, num_slam_features=15):
         if not ugv:
             motors_on = rospy.ServiceProxy('enable_motors', EnableMotors)
             motors_on.call(1)
@@ -28,6 +31,10 @@ class ROSInterface:
         self.current_scan = LaserScan()
         self.current_poseUAV = PoseStamped()
 
+        self.num_slam_features = num_slam_features
+        self.current_slam_map = FeatureMap()
+        self.current_slam_pose = PoseWithCovarianceStamped()
+
         # TODO: Make them remappable
         self.pub_vel = rospy.Publisher("/cmd_vel", Twist, queue_size=10) #/cmd/vel
         self.sub_pose = rospy.Subscriber("odom", Odometry, self.receive_pose) #/pose_in
@@ -36,6 +43,8 @@ class ROSInterface:
         self.sub_poseVelUAV = rospy.Subscriber("ground_truth/state", Odometry, self.receive_poseVelUAV)
         self.sub_posCov = rospy.Subscriber("amcl_pose", PoseWithCovarianceStamped, self.receive_posCov)
         self.sub_scan = rospy.Subscriber("scan", LaserScan, self.receive_scan)
+        self.xivo_map_sub = rospy.Subscriber("xivo/map", FeatureMap, self.receive_xivomap)
+        self.xivo_state_sub = rospy.Subscriber("xivo/pose", PoseWithCovarianceStamped, self.receive_xivostate)
 
     # Send MPC controls trough ROS to Gazebo simulation or real hardware
     def send_velocity(self, u_vec):
@@ -83,10 +92,38 @@ class ROSInterface:
     def receive_scan(self, msg):
         self.current_scan = msg
 
+    def receive_xivomap(self, msg):
+        self.current_slam_map = msg
+
+    def receive_xivostate(self, msg):
+        self.current_slam_pose = msg
+
     # Convert pose to MPC state format
     def get_current_pose(self):
         euler_angles = euler_from_quaternion([self.current_pose.pose.pose.orientation.x, self.current_pose.pose.pose.orientation.y, self.current_pose.pose.pose.orientation.z, self.current_pose.pose.pose.orientation.w])
         return [self.current_pose.pose.pose.position.x, self.current_pose.pose.pose.position.y, euler_angles[2]]
+
+    def get_current_poseCovUAV(self):
+        cov = self.current_slam_pose.pose.covariance  # 36 long array
+        cov = np.array(cov)
+        cov = np.reshape(cov, (6,6))
+        cov_Tsb = cov[3:5,3:5]
+        return cov_Tsb.flatten().tolist()
+
+    def get_current_poseUAV_XIVO(self):
+        Tsb = self.current_slam_pose.pose.pose.position
+        return [ Tsb.x, Tsb.y, Tsb.z ]
+
+    def get_features(self):
+        num_features = min(self.num_slam_features,
+                           self.current_slam_map.num_features)
+        feature_pos = np.zeros((num_features,3))
+        for i in range(num_features):
+            pos = self.current_slam_map.features[i].Xs
+            feature_pos[i,0] = pos.x
+            feature_pos[i,1] = pos.y
+            feature_pos[i,2] = pos.z
+        return feature_pos.flatten()
 
     def get_current_poseUAV(self):
         x_pos = self.current_poseUAV.pose.position.x

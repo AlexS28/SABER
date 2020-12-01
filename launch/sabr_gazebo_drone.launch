@@ -6,5 +6,18 @@
   	</include>
     <include file="$(find hector_quadrotor_gazebo)/launch/spawn_quadrotor_with_kinect_SABR.launch">
     </include>
+
+	<node pkg="xivo" type="xivo_ros" name="xivo" output="screen" >
+    <param name="config_path" value="$(find sabr_pkg)/xivo_cfg/hector_kinect.json"/>
+    <param name="viewer_config_path" value="$(env XIVO_ROOT)/cfg/phab_viewer.json"/>
+    <param name="estimator_queue_size" value="1000" />
+    <param name="image_topic"   value="/camera/rgb/image_raw" />
+    <param name="imu_topic"   value="/raw_imu" />
+    <param name="viewer_type" value="pangolin" />
+    <param name="publish_state" value="true" type="bool" />
+    <param name="publish_full_state" value="false" type="bool" />
+    <param name="publish_map" value="true" type="bool" />
+    <param name="publish_2dnav_state" value="false" type="bool" />
+	</node>
 </launch>
 
