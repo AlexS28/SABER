@@ -1,6 +1,6 @@
 # SABER
 This is the SABER submodule, part of the overall SABER project. To run the SABER project and install the necessary dependencies and packages, please go to the [SABER_build repository](https://github.com/stephanietsuei/SABER_build) and follow its instrunctions included in the README.
-![](gif_1.gif)![](gif_2.gif)![](gif_3.gif)![](gif_4.gif)![](gif_5.gif)![](gif_6.gif =250x250)
+![](gif_1.gif)![](gif_2.gif)![](gif_3.gif)![](gif_4.gif)![](gif_5.gif)![](gif_6.gif | width=100)
 
 The work is currently under review, and use of this code is permitted but requires citation.
 
