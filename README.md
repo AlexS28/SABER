@@ -7,7 +7,7 @@ The work is currently under review, and use of this code is permitted but requir
 
 <img src="https://github.com/AlexS28/SABER/blob/master/gif_1.gif" width="300"><img src="https://github.com/AlexS28/SABER/blob/master/gif_2.gif" width="300">
 <img src="https://github.com/AlexS28/SABER/blob/master/gif_3.gif" width="300"><img src="https://github.com/AlexS28/SABER/blob/master/gif_4.gif" width="300">
-<img src="https://github.com/AlexS28/SABER/blob/master/gif_5.gif" width="300"><img src="https://github.com/AlexS28/SABER/blob/master/pic_6.png" width="300">
+<img src="https://github.com/AlexS28/SABER/blob/master/gif_5.gif" width="300"><img 
 
 ## Dependencies (pip install ~), tested and run on python 2.7
 1. `numpy`
