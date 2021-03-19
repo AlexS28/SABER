@@ -5,8 +5,6 @@ The work is currently under review, and use of this code is permitted but requir
 
 ## SABER: Data-Driven Motion Planner for Autonomously Navigating Heterogeneous Robots
 `Authors: Alexander Schperberg, Stephanie Tsuei, Stefano Soatto, and Dennis Hong.`
-![](intro_pic.png)
-
 ## Dependencies (pip install ~), tested and run on python 2.7
 1. `numpy`
 2. `pandas`
@@ -21,3 +19,4 @@ The work is currently under review, and use of this code is permitted but requir
 11. `tensorflow`
 12. `sklearn`
 ## SABER: Stochastic model predictive control and Autonomous Bots in uncertain Environments using Reinforcement learning
+![](intro_pic.png)
